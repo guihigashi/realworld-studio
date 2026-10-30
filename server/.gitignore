@@ -1,0 +1,27 @@
+# OS files
+.DS_Store
+
+# sbt build artifacts
+target/
+project/target/
+project/project/target/
+project/boot/
+project/plugins/project/
+project/local-plugins.sbt
+dist/*
+lib_managed/
+src_managed/
+.history
+.sbt-scripted/
+local.sbt
+*.local.sbt
+
+# Language servers & IDEs
+.bsp/
+.bloop/
+.metals/
+metals.sbt
+.vscode/
+.idea/
+.idea_modules/
+/.worksheet/

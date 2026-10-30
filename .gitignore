@@ -1,0 +1,16 @@
+# OS files
+.DS_Store
+Thumbs.db
+
+# Global IDEs & Editors
+.idea/
+.vscode/
+
+# Language Servers & Tooling
+.bsp/
+.bloop/
+.metals/
+
+# Agents and Skills
+!.agents/
+/skills
