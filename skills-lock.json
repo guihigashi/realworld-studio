@@ -6,6 +6,12 @@
       "sourceType": "github",
       "skillPath": "plugins/zio-skills/skills/zio-http-knowledge/SKILL.md",
       "computedHash": "3d5233c9afb30b75ec83d0d7dfb4e2b8b7dbadab8a738d5c2f439e5504d785ff"
+    },
+    "zio-knowledge": {
+      "source": "zio/zio-skills",
+      "sourceType": "github",
+      "skillPath": "plugins/zio-skills/skills/zio-knowledge/SKILL.md",
+      "computedHash": "aecdcf8714577a1e5b796e370cabded242b4078422123ba91b0916b598768977"
     }
   }
 }

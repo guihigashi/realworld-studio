@@ -1,0 +1,170 @@
+package com.github.guihigashi.conduit.studio.infrastructure.db
+
+import java.util.UUID
+import cats.syntax.all.*
+import skunk.*
+import skunk.codec.all.*
+import skunk.implicits.*
+import zio.*
+import zio.interop.catz.*
+import com.github.guihigashi.conduit.studio.domain.tag.Tag
+import com.github.guihigashi.conduit.studio.domain.user.*
+
+final case class PostgresUserRepository(pool: SkunkPool) extends UserRepository:
+
+  private final case class PersonaRow(
+      id: UUID,
+      username: String,
+      email: String,
+      password: String,
+      bio: String,
+      avatarUrl: Option[String],
+      writingTone: String
+  )
+
+  private val personaRow: Codec[PersonaRow] =
+    (uuid ~ varchar(100) ~ varchar(255) ~ varchar(255) ~ text ~ text.opt ~ varchar(50)).imap {
+      case id ~ username ~ email ~ password ~ bio ~ avatar ~ tone =>
+        PersonaRow(id, username, email, password, bio, avatar, tone)
+    } { p =>
+      p.id ~ p.username ~ p.email ~ p.password ~ p.bio ~ p.avatarUrl ~ p.writingTone
+    }
+
+  private val selectTagsForPersona: Query[UUID, Tag] =
+    sql"""
+      SELECT t.id, t.name
+      FROM tags t
+      JOIN persona_tags pt ON pt.tag_id = t.id
+      WHERE pt.persona_id = $uuid
+      ORDER BY t.name ASC
+    """.query(int4 ~ varchar(50)).map { case id ~ name => Tag(Some(id), name) }
+
+  private val insertPersona: Command[PersonaRow] =
+    sql"""
+      INSERT INTO personas (id, username, email, password, bio, avatar_url, writing_tone)
+      VALUES ($personaRow)
+    """.command
+
+  private val linkTagByName: Command[(UUID, String)] =
+    sql"""
+      INSERT INTO persona_tags (persona_id, tag_id)
+      SELECT $uuid, id FROM tags WHERE name = ${varchar(50)}
+      ON CONFLICT DO NOTHING
+    """.command
+
+  override def save(user: User): Task[User] =
+    val row = PersonaRow(
+      id = user.id,
+      username = user.username,
+      email = user.email,
+      password = user.password,
+      bio = user.bio,
+      avatarUrl = user.avatarUrl,
+      writingTone = user.writingTone.toString
+    )
+    pool.use { session =>
+      session.transaction.use { _ =>
+        for
+          insertCmd <- session.prepare(insertPersona)
+          _         <- insertCmd.execute(row)
+          linkCmd   <- session.prepare(linkTagByName)
+          _         <- user.tags.toList.traverse(t => linkCmd.execute((user.id, t.value.toLowerCase)))
+        yield user
+      }
+    }
+
+  private val selectById: Query[UUID, PersonaRow] =
+    sql"""
+      SELECT id, username, email, password, bio, avatar_url, writing_tone
+      FROM personas
+      WHERE id = $uuid
+    """.query(personaRow)
+
+  override def findById(id: UUID): Task[Option[User]] =
+    pool.use { session =>
+      for
+        qPersona <- session.prepare(selectById)
+        optRow   <- qPersona.option(id)
+        qTags    <- session.prepare(selectTagsForPersona)
+        tags     <- qTags.stream(id, 64).compile.toList
+      yield optRow.map { row =>
+        User(
+          id = row.id,
+          username = row.username,
+          email = row.email,
+          password = row.password,
+          bio = row.bio,
+          avatarUrl = row.avatarUrl,
+          writingTone = WritingTone.fromString(row.writingTone).getOrElse(WritingTone.TechnicalDeepDive),
+          tags = tags.toSet
+        )
+      }
+    }
+
+  private val selectByUsername: Query[String, PersonaRow] =
+    sql"""
+      SELECT id, username, email, password, bio, avatar_url, writing_tone
+      FROM personas
+      WHERE username = ${varchar(100)}
+    """.query(personaRow)
+
+  override def findByUsername(username: String): Task[Option[User]] =
+    pool.use { session =>
+      for
+        qPersona <- session.prepare(selectByUsername)
+        optRow   <- qPersona.option(username.trim)
+        result <- optRow match
+          case None => ZIO.succeed(None)
+          case Some(row) =>
+            session.prepare(selectTagsForPersona).flatMap { qTags =>
+              qTags.stream(row.id, 64).compile.toList.map { tags =>
+                Some(
+                  User(
+                    id = row.id,
+                    username = row.username,
+                    email = row.email,
+                    password = row.password,
+                    bio = row.bio,
+                    avatarUrl = row.avatarUrl,
+                    writingTone = WritingTone.fromString(row.writingTone).getOrElse(WritingTone.TechnicalDeepDive),
+                    tags = tags.toSet
+                  )
+                )
+              }
+            }
+      yield result
+    }
+
+  private val selectAll: Query[Void, PersonaRow] =
+    sql"""
+      SELECT id, username, email, password, bio, avatar_url, writing_tone
+      FROM personas
+      ORDER BY username ASC
+    """.query(personaRow)
+
+  override def findAll: Task[List[User]] =
+    pool.use { session =>
+      for
+        rows <- session.execute(selectAll)
+        users <- rows.traverse { row =>
+          session.prepare(selectTagsForPersona).flatMap { qTags =>
+            qTags.stream(row.id, 64).compile.toList.map { tags =>
+              User(
+                id = row.id,
+                username = row.username,
+                email = row.email,
+                password = row.password,
+                bio = row.bio,
+                avatarUrl = row.avatarUrl,
+                writingTone = WritingTone.fromString(row.writingTone).getOrElse(WritingTone.TechnicalDeepDive),
+                tags = tags.toSet
+              )
+            }
+          }
+        }
+      yield users
+    }
+
+object PostgresUserRepository:
+  val layer: URLayer[SkunkPool, UserRepository] =
+    ZLayer.fromFunction(PostgresUserRepository.apply)

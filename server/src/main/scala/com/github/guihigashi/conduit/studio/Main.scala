@@ -1,40 +1,33 @@
 package com.github.guihigashi.conduit.studio
 
 import zio.*
+import zio.config.typesafe.TypesafeConfigProvider
 import zio.http.*
-import zio.http.codec.*
-import zio.http.codec.PathCodec.path
-import zio.http.endpoint.*
-import zio.http.endpoint.openapi.*
-import zio.http.template.Dom
-import zio.schema.*
-import zio.schema.annotation.*
-import zio.schema.validation.Validation
-
-final case class UserParams(
-    city: String,
-    @validate(Validation.greaterThan(17)) age: Int
-)
-
-object UserParams:
-  implicit val schema: Schema[UserParams] = DeriveSchema.gen[UserParams]
+import zio.logging.consoleLogger
+import zio.logging.slf4j.bridge.Slf4jBridge
+import com.github.guihigashi.conduit.studio.application.tag.TagService
+import com.github.guihigashi.conduit.studio.application.user.UserService
+import com.github.guihigashi.conduit.studio.infrastructure.ai.{LlamaCppClient, LlmAiUserGenerator}
+import com.github.guihigashi.conduit.studio.infrastructure.db.{PostgresTagRepository, PostgresUserRepository, SkunkPool}
+import com.github.guihigashi.conduit.studio.presentation.http.ApiRoutes
 
 object Main extends ZIOAppDefault:
-  val endpoint =
-    Endpoint(Method.GET / "hello" / string("user")).query(HttpCodec.query[UserParams]).out[Dom]
 
-  val openApi = OpenAPIGen.fromEndpoints("Conduit Studio API", "1.0.0", endpoint)
-
-  val routes =
-    endpoint
-      .implement { case (user, params) =>
-        ZIO.succeed(
-          Dom.text(
-            s"Hello $user, you are ${params.age} years old and live in ${params.city}"
-          )
-        )
-      }
-      .toRoutes ++ SwaggerUI.routes("intern" / "apidoc", openApi)
+  override val bootstrap: ZLayer[ZIOAppArgs, Any, Any] =
+    Runtime.setConfigProvider(TypesafeConfigProvider.fromResourcePath()) ++
+      (Runtime.removeDefaultLoggers >>> consoleLogger()) ++
+      Slf4jBridge.initialize
 
   def run: ZIO[ZIOAppArgs & Scope, Any, Any] =
-    Server.serve(routes).provide(Server.default)
+    ZIO.serviceWithZIO[ApiRoutes](_.serve).provide(
+      Server.default,
+      ApiRoutes.layer,
+      TagService.layer,
+      UserService.layer,
+      PostgresTagRepository.layer,
+      PostgresUserRepository.layer,
+      SkunkPool.live,
+      LlmAiUserGenerator.layer,
+      LlamaCppClient.live,
+      Client.default
+    )

@@ -1,92 +1,100 @@
 # Portfolio Implementation & Git Commit Roadmap
 
-A phased, commit-by-commit roadmap structured into two primary tracks:
-1. **Backend & Endpoints:** Domain $\rightarrow$ Persistence & Queue $\rightarrow$ LLM & Publisher $\rightarrow$ Endpoint API & OpenAPI $\rightarrow$ Full Endpoint Testing.
-2. **Frontend UI:** App Shell & Routes $\rightarrow$ Data Fetching & SSE Integration $\rightarrow$ Component Styling & UX Polish.
+A phased, commit-by-commit roadmap structured into modular vertical slices:
+1. **Subdomain 1 (Personas & Tags):** Domain $\rightarrow$ Persistence $\rightarrow$ LLM Seeder $\rightarrow$ Endpoints $\rightarrow$ Integration Tests.
+2. **Subdomain 2 (Articles & Background Queue):** State Machine $\rightarrow$ Database & LISTEN/NOTIFY $\rightarrow$ Worker & Publisher $\rightarrow$ SSE Endpoints.
+3. **Frontend UI:** App Shell & Routes $\rightarrow$ Data Fetching & SSE $\rightarrow$ Component Styling & Split-Pane Editor.
+4. **Production Packaging:** Standalone Fat-JAR & Portfolio Polish.
 
 ---
 
-## 🏛️ Track 1: Domain $\rightarrow$ Backend $\rightarrow$ Test Endpoints
+## 🏛️ Track 1: Backend Vertical Slices
 
-### Milestone 0: Clean Baseline
+### Milestone 0: Clean Baseline `[COMPLETED]`
 * **Commit 1: `chore: initialize repository scaffolding, architecture design, and build definitions`**
-  - Localized `.gitignore` files for root, `server/`, and `web/` workspaces.
-  - Baseline configs (`server/build.sbt`, `web/package.json`).
-  - System architecture and design documentation in `.agents/`.
-
-### Milestone 1: Domain Modeling
-* **Commit 2: `feat(domain): define core scala 3 domain models and algebraic data types`**
-  - Scala 3 ADTs & enums with `zio.schema.Schema`: `WritingTone`, `ArticleStatus` (typed state machine).
-  - Domain case classes: `Persona`, `Tag`, `ArticleJob`, `CreatePersonaRequest`, `QueueArticleRequest`.
-  - MUnit tests validating domain transitions and validation invariants.
-
-### Milestone 2: Functional Database & LISTEN/NOTIFY Queue
-* **Commit 3: `feat(db): configure skunk postgres client and zio-cats interop session pool`**
-  - Add `skunk-core` and `zio-interop-cats` to `server/build.sbt`.
-  - SQL DDL migrations: tables (`personas`, `tags`, `persona_tags`, `articles`), status enum, and `pg_notify` trigger.
-  - Skunk session pool managed as a `ZLayer`.
-* **Commit 4: `feat(db): implement persona and article repositories with bidirectional codecs`**
-  - Skunk codecs and queries: insert/select personas, tag relationships, insert articles.
-  - Atomic job claiming queries using `FOR UPDATE SKIP LOCKED`.
-  - Repository integration tests.
-* **Commit 5: `feat(queue): implement postgres listen/notify event dispatcher using skunk channels`**
-  - Background fiber listening to `article_events` via `session.channel(id"article_events").listen(...)`.
-  - Event fan-out to `ZIO.Hub` (for SSE) and worker wakeup triggers with 0% idle CPU.
-
-### Milestone 3: LLM Engine & Conduit Publisher
-* **Commit 6: `feat(llm): implement llama.cpp client with grammar-constrained json schema generation`**
-  - ZIO HTTP client for `llama-server` (`POST /completion`).
-  - Structured JSON Schema generation (GBNF grammar clamping).
-  - Throttling with `ZIO.Semaphore(permits = maxGpuSlots)` to safeguard VRAM.
-* **Commit 7: `feat(worker): implement generation worker to persist pending_approval drafts`**
-  - Background fiber worker: claimed `queued_generation` job $\rightarrow$ invokes LLM $\rightarrow$ updates status to `pending_approval`.
-* **Commit 8: `feat(publisher): implement conduit api client and publishing worker`**
-  - ZIO HTTP client for RealWorld Conduit API: login/register persona $\rightarrow$ `POST /api/articles` with Bearer token.
-  - Publishing worker fiber claiming `approved` articles, saving external slug, and setting `published`.
-
-### Milestone 4: ZIO HTTP Endpoint API, OpenAPI & Real-Time SSE
-* **Commit 9: `feat(api): define declarative endpoint api with zio-schema and swagger ui openapi docs`**
-  - Declarative `Endpoint` definitions for `/api/personas`, `/api/articles`, and `/api/articles/:id/approve`.
-  - Automatic OpenAPI 3.0 specification derivation with `OpenAPIGen.fromEndpoints`.
-  - Interactive Swagger UI served directly at `/docs/openapi` via `SwaggerUI.routes`.
-* **Commit 10: `feat(api): implement endpoint handlers and expose sse status stream`**
-  - Implement handlers binding `Endpoint` definitions to domain repositories.
-  - `GET /api/events` streaming Server-Sent Events from `ZIO.Hub`.
-* **Commit 11: `test(api): add comprehensive integration test suite for all rest and sse endpoints`**
-  - Automated tests verifying persona creation, article queuing, approval flow, OpenAPI spec availability, and SSE broadcast.
+  - [x] Localized `.gitignore` files for root, `server/`, and `web/` workspaces.
+  - [x] Baseline configs (`server/build.sbt`, `web/package.json`).
+  - [x] System architecture and design documentation in `.agents/`.
 
 ---
 
-## 🎨 Track 2: UI $\rightarrow$ Routes $\rightarrow$ Get Data $\rightarrow$ Work on Style
+### Milestone 1: Tag & Persona Subdomain (Vertical Slice) `[COMPLETED]`
+* **Commit 2: `feat(domain): define tag and persona aggregates with ai generator ports`**
+  - [x] `Tag` value object with lowercase and length invariants.
+  - [x] `WritingTone` enum (Academic, Conversational, Provocative, TechnicalDeepDive, Storyteller, Humorous).
+  - [x] `User` aggregate root with authentication credentials (`password`), bio, tone, and tag associations.
+  - [x] Domain ports: `TagRepository`, `UserRepository`, `AiUserGenerator`.
+* **Commit 3: `feat(db): implement postgres skunk persistence with flyway migrations`**
+  - [x] Flyway DDL migration `V1__create_personas_and_tags.sql` with modern `INT GENERATED ALWAYS AS IDENTITY`.
+  - [x] Non-blocking Skunk session pool managed as a `ZLayer` (`SkunkPool.live`).
+  - [x] `PostgresTagRepository` and `PostgresUserRepository` with flat, co-located SQL queries.
+* **Commit 4: `feat(llm): implement llama.cpp client with gbnf json schema clamping`**
+  - [x] `LlamaCppClient` targeting local `llama.cpp` server (`http://127.0.0.1:9931`).
+  - [x] Dynamic OpenAPI `JsonSchema` derivation from `zio.schema.Schema[T]` for logit clamping.
+  - [x] `AppConfig` (`app.mode`) printing derived schemas to console in `dev` mode.
+  - [x] Deterministic fallback synthesis in `LlmAiUserGenerator` for offline resilience.
+* **Commit 5: `feat(api): expose declarative endpoints and auto-wired server bootstrap`**
+  - [x] Case class route handlers (`TagRoutes`, `UserRoutes`) eliminating service lookup overhead (`Routes[Any, Response]`).
+  - [x] Consolidated `ApiRoutes.layer` assembling tag/user routes + Swagger UI at `/docs/openapi`.
+  - [x] Declarative ZIO 2 auto-wiring in `Main.scala` with zero manual plumbing combinators.
+  - [x] Live PostgreSQL & LLM integration test suites running in < 2 seconds (`MainEndpointSpec`, `LlmClientSpec`).
 
-### Milestone 5: App Shell & Routing
-* **Commit 12: `feat(ui): scaffold application shell, navigation, and routing`**
-  - React Router / views: Personas Hub, Article Studio, Approval Board, Publishing Audit, Swagger Link.
-  - Base layout structure with navigation bar and status indicators.
+---
 
-### Milestone 6: Data Fetching & Real-Time Sync (Get Data)
-* **Commit 13: `feat(ui): implement api client and real-time sse integration`**
-  - Typed API service fetching personas, submitting article generation jobs, and sending approvals.
-  - React hook subscribing to `/api/events` (EventSource) for live board updates without page refreshes.
+### Milestone 2: Article Generation & Publishing Subdomain (Vertical Slice) `[NEXT UP]`
+* **Commit 6: `feat(domain): define article aggregate, commands, and typed state machine`**
+  - [ ] `ArticleStatus` typed state machine: `QueuedGeneration` $\rightarrow$ `Generating` $\rightarrow$ `PendingApproval` $\rightarrow$ `Approved` $\rightarrow$ `Publishing` $\rightarrow$ `Published` / `Failed`.
+  - [ ] `Article` aggregate root (title, slug, body, description, tagList, authorId, status, conduitUrl).
+  - [ ] `ArticleRepository` domain port.
+* **Commit 7: `feat(db): add articles schema and skunk atomic queue repository`**
+  - [ ] Flyway DDL migration `V2__create_articles_and_events.sql` with `articles` table and `article_events` channel.
+  - [ ] `PostgresArticleRepository` with `FOR UPDATE SKIP LOCKED` for atomic job claiming.
+  - [ ] PostgreSQL `LISTEN/NOTIFY` dispatcher using Skunk channels fanning out to `ZIO.Hub`.
+* **Commit 8: `feat(worker): implement llm article generator and background worker fibers`**
+  - [ ] Markdown article content synthesis via `LlamaCppClient` using persona domain tags and tone.
+  - [ ] Background generation worker fiber: claims `QueuedGeneration` $\rightarrow$ generates draft $\rightarrow$ transitions to `PendingApproval`.
+  - [ ] ZIO concurrency safeguard with `ZIO.Semaphore` limiting concurrent LLM inference slots.
+* **Commit 9: `feat(publisher): implement realworld conduit api client and publishing worker`**
+  - [ ] ZIO HTTP client for Conduit API: authenticate persona $\rightarrow$ `POST /api/articles` with Bearer token.
+  - [ ] Publishing worker fiber: claims `Approved` articles $\rightarrow$ posts to Conduit $\rightarrow$ records external URL $\rightarrow$ marks `Published`.
+* **Commit 10: `feat(api): expose article management endpoints and real-time sse stream`**
+  - [ ] Declarative endpoints: `POST /api/articles` (enqueue), `GET /api/articles` (filter by status/author), `POST /api/articles/:id/approve`, `POST /api/articles/:id/regenerate`.
+  - [ ] `GET /api/events` streaming Server-Sent Events (SSE) from `ZIO.Hub` for real-time frontend synchronization.
+  - [ ] Comprehensive integration test suite for the complete article lifecycle.
 
-### Milestone 7: Interactive Workflows & UI Polish (Work on Style)
-* **Commit 14: `feat(ui): build styled persona manager with domain tag chips and creation modal`**
-  - Persona cards with avatar, writing tone badges, and tag chips.
-  - Manual creation and "Generate with AI" modal.
-* **Commit 15: `feat(ui): build styled article generation studio with author tag filtering`**
-  - Interactive author selector automatically scoping selectable tags to that author's expertise.
-  - Topic/hint input and dispatch animation.
-* **Commit 16: `feat(ui): build split-pane approval board with live markdown preview and editor`**
-  - Side-by-side markdown editor and live GitHub-flavored preview.
-  - "Approve & Publish", "Reject", and "Regenerate" actions with live feedback.
-* **Commit 17: `feat(ui): build publishing audit log and external conduit link monitor`**
-  - Live feed of published articles with direct links to the Conduit blog instance.
+---
+
+## 🎨 Track 2: UI (React 19 + TypeScript + Vite + MUI)
+
+### Milestone 3: App Shell & Routing
+* **Commit 11: `feat(ui): scaffold application shell, navigation, and routing`**
+  - [ ] React Router configuration: Personas Hub, Article Studio, Approval Board, Publishing Audit.
+  - [ ] Responsive navigation drawer and system status indicators.
+
+### Milestone 4: Data Fetching & Real-Time Sync
+* **Commit 12: `feat(ui): implement typed api client and real-time sse subscription`**
+  - [ ] Typed API client fetching tags, personas, and article jobs.
+  - [ ] Custom React hook subscribing to `/api/events` (EventSource) for live UI state updates without polling.
+
+### Milestone 5: Interactive Workflows & UI Polish
+* **Commit 13: `feat(ui): build persona manager with domain tag chips and ai generation modal`**
+  - [ ] Persona cards with avatar, writing tone badges, and tag chips.
+  - [ ] "Generate Persona with AI" modal calling `POST /api/users/generate`.
+* **Commit 14: `feat(ui): build split-pane approval board with live markdown editor`**
+  - [ ] Side-by-side split-pane editor with live GitHub-flavored markdown preview.
+  - [ ] "Approve & Publish", "Reject", and "Regenerate" actions with live status feedback.
+* **Commit 15: `feat(ui): build publishing audit log and external conduit link monitor`**
+  - [ ] Audit log feed displaying published articles with direct hyperlinks to the live Conduit blog.
 
 ---
 
 ## 🚀 Track 3: Production Packaging & Portfolio Polish
-* **Commit 18: `feat(build): configure embedded spa classloading and sbt-assembly fat-jar`**
-  - Vite outputs directly to `server/src/main/resources/dist`.
-  - Single-binary JAR packaging: `java -jar server-assembly.jar` serves API + UI.
-* **Commit 19: `docs: create comprehensive portfolio readme with architecture diagrams, benchmarks, and quickstart`**
-  - Portfolio presentation: architectural diagrams, clean code highlights, quickstart demo script.
+
+### Milestone 6: Single-Binary Assembly & Showcase
+* **Commit 16: `feat(build): configure embedded spa static serving and sbt assembly`**
+  - [ ] Vite production build output copied into `server/src/main/resources/dist`.
+  - [ ] ZIO HTTP static resource routing serving embedded SPA on `GET /`.
+  - [ ] Standalone fat-JAR packaging: single executable `java -jar server.jar` serving API + UI.
+* **Commit 17: `docs: create comprehensive portfolio readme with architecture diagrams and quickstart`**
+  - [ ] Architecture diagrams (Mermaid flowcharts of event-driven queue and LLM logit clamping).
+  - [ ] Quickstart demo script and performance telemetry highlights.
