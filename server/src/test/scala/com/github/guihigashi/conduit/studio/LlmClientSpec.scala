@@ -1,12 +1,16 @@
 package com.github.guihigashi.conduit.studio
 
 import zio.*
+import zio.http.Client
+import zio.json.*
+import zio.json.ast.Json
 import zio.schema.*
 import zio.test.*
 import com.github.guihigashi.conduit.studio.domain.tag.Tag
 import com.github.guihigashi.conduit.studio.domain.user.*
 import com.github.guihigashi.conduit.studio.infrastructure.ai.*
-import com.github.guihigashi.conduit.studio.infrastructure.config.{AppConfig, LlamaCppConfig}
+import com.github.guihigashi.conduit.studio.infrastructure.ai.protocol.*
+import com.github.guihigashi.conduit.studio.infrastructure.config.{AppConfig, OpenAiConfig}
 
 object LlmClientSpec extends ZIOSpecDefault:
 
@@ -49,14 +53,14 @@ object LlmClientSpec extends ZIOSpecDefault:
         profile.tags.map(_.value) == List("scala", "zio")
       )
     },
-    test("LlamaCppClient derives JSON schema from Schema[T] and prints when app.mode is dev") {
-      val llamaClient = LlamaCppClient(
+    test("OpenAiClient derives JSON schema from Schema[T] and prints when app.mode is dev") {
+      val openAiClient = OpenAiClient(
         client = null,
-        config = LlamaCppConfig("http://mock"),
+        config = OpenAiConfig("http://mock/v1"),
         appConfig = AppConfig("dev")
       )
 
-      val schemaString = llamaClient.deriveSchemaString[GeneratedUserProfile]
+      val schemaString = openAiClient.deriveSchemaString[GeneratedUserProfile]
       assertTrue(
         schemaString.contains("suggestedUsername"),
         schemaString.contains("suggestedEmail"),
@@ -64,16 +68,54 @@ object LlmClientSpec extends ZIOSpecDefault:
         schemaString.contains("Academic")
       )
     },
+    test("ChatCompletionRequest serializes with model, response_format and chat_template_kwargs") {
+      val req = ChatCompletionRequest(
+        model = Some("gpt-4o-mini"),
+        messages = List(ChatMessage("user", "Hello")),
+        response_format = Some(ResponseFormat.jsonSchema("test", Json.Obj())),
+        chat_template_kwargs = Some(Map("enable_thinking" -> Json.Bool(false)))
+      )
+      val json = req.toJson
+      assertTrue(
+        json.contains(""""model":"gpt-4o-mini""""),
+        json.contains(""""role":"user""""),
+        json.contains(""""type":"json_schema""""),
+        json.contains(""""enable_thinking":false""")
+      )
+    },
+    test("ChatCompletionResponse parses choice with reasoning_content correctly") {
+      val responseJson =
+        """{
+          |  "choices": [
+          |    {
+          |      "index": 0,
+          |      "message": {
+          |        "role": "assistant",
+          |        "content": "{\"status\":\"ok\"}",
+          |        "reasoning_content": "Thinking step by step..."
+          |      },
+          |      "finish_reason": "stop"
+          |    }
+          |  ]
+          |}""".stripMargin
+
+      val decoded = responseJson.fromJson[ChatCompletionResponse]
+      assertTrue(
+        decoded.isRight,
+        decoded.toOption.flatMap(_.firstContent).contains("{\"status\":\"ok\"}"),
+        decoded.toOption.flatMap(_.choices.headOption.flatMap(_.message.reasoning_content)).contains("Thinking step by step...")
+      )
+    },
     test("LlmAiUserGenerator gracefully falls back when LlmClient fails") {
       val failingClient = new LlmClient:
         override def complete(prompt: String, temperature: Double, maxTokens: Int): Task[String] =
-          ZIO.fail(new RuntimeException("Connection refused (llama.cpp offline)"))
+          ZIO.fail(new RuntimeException("Connection refused (LLM offline)"))
         override def completeJson[T: Schema](
             prompt: String,
             systemPrompt: Option[String],
             temperature: Double
         ): Task[T] =
-          ZIO.fail(new RuntimeException("Connection refused (llama.cpp offline)"))
+          ZIO.fail(new RuntimeException("Connection refused (LLM offline)"))
 
       val generator = LlmAiUserGenerator(failingClient)
       val tags      = List(Tag("rust"), Tag("distributed-systems"))
@@ -85,5 +127,22 @@ object LlmClientSpec extends ZIOSpecDefault:
         profile.suggestedBio.contains("Systems Hacker"),
         profile.writingTone == WritingTone.Conversational
       )
-    }
+    },
+    test("Live OpenAiClient integration test with local model") {
+      val config = OpenAiConfig("http://127.0.0.1:9931/v1", 60)
+      for {
+        client <- ZIO.service[Client]
+        openAiClient = OpenAiClient(client, config, AppConfig("dev"))
+        isHealthy <- openAiClient.health
+        profile <- openAiClient.completeJson[GeneratedUserProfile](
+          prompt = "Generate a persona developer profile with tags [scala, zio]",
+          systemPrompt = Some("You are an assistant that synthesizes developer personas."),
+          temperature = 0.2
+        )
+      } yield assertTrue(
+        isHealthy,
+        profile.suggestedUsername.nonEmpty,
+        profile.suggestedBio.nonEmpty
+      )
+    }.provide(Client.default) @@ TestAspect.ignore
   )

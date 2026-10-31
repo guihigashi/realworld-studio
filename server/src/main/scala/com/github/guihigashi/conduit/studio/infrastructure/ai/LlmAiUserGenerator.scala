@@ -17,10 +17,18 @@ final case class LlmAiUserGenerator(
     val tagsListStr  = if tags.isEmpty then "general software engineering" else tags.map(_.value).mkString(", ")
 
     val prompt =
-      s"Generate a realistic developer persona profile with expertise in [$tagsListStr] and a $selectedTone writing tone for a technical blogging community."
+      s"""Generate a realistic developer persona profile with expertise in [$tagsListStr] and a $selectedTone writing tone for a technical blogging community.
+         |
+         |Field requirements:
+         |- suggestedUsername: A creative username (3-25 alphanumeric/underscores) reflecting the domain tags [$tagsListStr].
+         |- suggestedEmail: Valid email handle ending in @conduit.studio (e.g. username@conduit.studio).
+         |- suggestedPassword: A generated initial password.
+         |- suggestedBio: A compelling 1-2 sentence developer bio aligned with $selectedTone writing tone and [$tagsListStr] domain expertise.
+         |- writingTone: Exactly $selectedTone.
+         |- tags: The expertise domain tags.""".stripMargin
 
     val systemPrompt =
-      "You are a specialized AI assistant that synthesizes realistic developer personas. Adhere strictly to the requested schema descriptions."
+      "You are a specialized AI assistant that synthesizes realistic developer personas."
 
     llmClient
       .completeJson[GeneratedUserProfile](prompt, Some(systemPrompt), temperature = 0.3)

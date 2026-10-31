@@ -7,7 +7,7 @@ import zio.logging.consoleLogger
 import zio.logging.slf4j.bridge.Slf4jBridge
 import com.github.guihigashi.conduit.studio.application.tag.TagService
 import com.github.guihigashi.conduit.studio.application.user.UserService
-import com.github.guihigashi.conduit.studio.infrastructure.ai.{LlamaCppClient, LlmAiUserGenerator}
+import com.github.guihigashi.conduit.studio.infrastructure.ai.{LlmAiUserGenerator, OpenAiClient}
 import com.github.guihigashi.conduit.studio.infrastructure.db.{PostgresTagRepository, PostgresUserRepository, SkunkPool}
 import com.github.guihigashi.conduit.studio.presentation.http.ApiRoutes
 
@@ -28,6 +28,6 @@ object Main extends ZIOAppDefault:
       PostgresUserRepository.layer,
       SkunkPool.live,
       LlmAiUserGenerator.layer,
-      LlamaCppClient.live,
+      OpenAiClient.live,
       Client.default
     )
