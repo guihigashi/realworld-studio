@@ -17,21 +17,21 @@ final case class LlmAiUserGenerator(
     val tagsListStr  = if tags.isEmpty then "general software engineering" else tags.map(_.value).mkString(", ")
 
     val prompt =
-      s"""Generate a realistic developer persona profile with expertise in [$tagsListStr] and a $selectedTone writing tone for a technical blogging community.
+      s"""Generate a realistic, unique developer persona profile with expertise in [$tagsListStr] and a $selectedTone writing tone for a technical blogging community.
          |
          |Field requirements:
-         |- suggestedUsername: A creative username (3-25 alphanumeric/underscores) reflecting the domain tags [$tagsListStr].
-         |- suggestedEmail: Valid email handle ending in @conduit.studio (e.g. username@conduit.studio).
-         |- suggestedPassword: A generated initial password.
-         |- suggestedBio: A compelling 1-2 sentence developer bio aligned with $selectedTone writing tone and [$tagsListStr] domain expertise.
+         |- suggestedUsername: Invent a distinct, realistic human full name with a space between First and Last name from diverse global cultural backgrounds. Do NOT use placeholder names.
+         |- suggestedEmail: A matching lowercase email handle without spaces ending in @conduit.studio (format: firstname.lastname@conduit.studio).
+         |- suggestedPassword: An initial random alphanumeric password with 8 to 12 characters.
+         |- suggestedBio: A compelling, original 1-2 sentence developer bio aligned with $selectedTone writing tone and [$tagsListStr] domain expertise.
          |- writingTone: Exactly $selectedTone.
          |- tags: The expertise domain tags.""".stripMargin
 
     val systemPrompt =
-      "You are a specialized AI assistant that synthesizes realistic developer personas."
+      "You are a specialized AI assistant that synthesizes realistic, diverse developer personas. Generate varied backgrounds, specializations, and distinct human names for each profile without repetition."
 
     llmClient
-      .completeJson[GeneratedUserProfile](prompt, Some(systemPrompt), temperature = 0.3)
+      .completeJson[GeneratedUserProfile](prompt, Some(systemPrompt), temperature = 0.8)
       .catchAll { err =>
         ZIO.logWarning(
           s"LLM generation failed (${err.getMessage}), falling back to deterministic profile synthesis."

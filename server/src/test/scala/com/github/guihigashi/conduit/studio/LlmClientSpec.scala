@@ -88,7 +88,6 @@ object LlmClientSpec extends ZIOSpecDefault:
         """{
           |  "choices": [
           |    {
-          |      "index": 0,
           |      "message": {
           |        "role": "assistant",
           |        "content": "{\"status\":\"ok\"}",
@@ -127,22 +126,5 @@ object LlmClientSpec extends ZIOSpecDefault:
         profile.suggestedBio.contains("Systems Hacker"),
         profile.writingTone == WritingTone.Conversational
       )
-    },
-    test("Live OpenAiClient integration test with local model") {
-      val config = OpenAiConfig("http://127.0.0.1:9931/v1", 60)
-      for {
-        client <- ZIO.service[Client]
-        openAiClient = OpenAiClient(client, config, AppConfig("dev"))
-        isHealthy <- openAiClient.health
-        profile <- openAiClient.completeJson[GeneratedUserProfile](
-          prompt = "Generate a persona developer profile with tags [scala, zio]",
-          systemPrompt = Some("You are an assistant that synthesizes developer personas."),
-          temperature = 0.2
-        )
-      } yield assertTrue(
-        isHealthy,
-        profile.suggestedUsername.nonEmpty,
-        profile.suggestedBio.nonEmpty
-      )
-    }.provide(Client.default) @@ TestAspect.ignore
+    }
   )

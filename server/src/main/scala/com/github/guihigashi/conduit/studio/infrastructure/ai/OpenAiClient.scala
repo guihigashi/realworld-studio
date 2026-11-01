@@ -23,10 +23,13 @@ final case class OpenAiClient(
       response <- client.batched(req).timeoutFail(new RuntimeException("Health check timed out"))(5.seconds)
     yield response.status.isSuccess
 
-  def deriveSchemaString[T: Schema]: String =
+  def deriveJsonSchema[T: Schema]: Either[String, Json] =
     val schemaRef     = JsonSchema.SchemaRef(JsonSchema.SchemaSpec.OpenAPI, JsonSchema.SchemaStyle.Inline)
     val derivedSchema = JsonSchema.fromZSchema(Schema[T], schemaRef)
-    JsonCodec.jsonEncoder(JsonSchema.schema).encodeJson(derivedSchema).toString
+    JsonCodec.jsonEncoder(JsonSchema.schema).toJsonAST(derivedSchema)
+
+  def deriveSchemaString[T: Schema]: String =
+    deriveJsonSchema[T].fold(_ => "{}", _.toJson)
 
   override def complete(
       prompt: String,
@@ -45,21 +48,21 @@ final case class OpenAiClient(
     val userMessage    = ChatMessage(role = "user", content = prompt)
     val messages       = systemMessages :+ userMessage
 
-    val schemaJsonString = deriveSchemaString[T]
-    val jsonAst          = schemaJsonString.fromJson[Json].toOption
-
-    val responseFormat = jsonAst.map { schema =>
+    val schemaAstOpt   = deriveJsonSchema[T].toOption
+    val responseFormat = schemaAstOpt.map { schema =>
       ResponseFormat.jsonSchema(name = "StructuredOutput", schema = schema)
     }
 
     for
-      _ <- Console
-        .printLine(
-          s"""=== [DEV MODE] Derived LLM JSON Schema ===
-             |$schemaJsonString
-             |=========================================""".stripMargin
-        )
-        .when(appConfig.isDev)
+      _ <- ZIO.when(appConfig.isDev) {
+        ZIO.foreachDiscard(schemaAstOpt) { schema =>
+          Console.printLine(
+            s"""=== [DEV MODE] Derived LLM JSON Schema ===
+               |${schema.toJsonPretty}
+               |=========================================""".stripMargin
+          )
+        }
+      }
       rawResponse <- executeChatCompletion(
         messages = messages,
         temperature = temperature,
@@ -118,7 +121,9 @@ final case class OpenAiClient(
     yield content
 
   private def addAuthHeaders(req: Request): Request =
-    config.apiKey.fold(req)(key => req.addHeader(Header.Authorization.Bearer(key)))
+    config.apiKey match
+      case Some(key) if key.nonEmpty => req.addHeader(Header.Authorization.Bearer(key))
+      case _                         => req
 
 object OpenAiClient:
   val live: ZLayer[Client, Config.Error, LlmClient] =
