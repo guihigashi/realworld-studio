@@ -66,31 +66,31 @@ A phased, commit-by-commit roadmap structured into modular vertical slices:
 
 ## 🎨 Track 2: UI (React 19 + TypeScript + Vite + MUI)
 
-### Milestone 3: App Shell & Routing `[NEXT UP]`
+### Milestone 3: App Shell & Routing `[COMPLETED]`
 * **Commit 11: `feat(ui): scaffold application shell, navigation, and routing`**
-  - [ ] React Router configuration: Personas Hub, Article Studio, Approval Board, Publishing Audit.
-  - [ ] Responsive navigation drawer and system status indicators.
+  - [x] React Router configuration: Personas Hub, Article Studio, Approval Board, Publishing Audit.
+  - [x] Responsive navigation drawer and system status indicators.
 
-### Milestone 4: Data Fetching & Real-Time Sync
+### Milestone 4: Data Fetching & Real-Time Sync `[COMPLETED]`
 * **Commit 12: `feat(ui): implement typed api client and real-time sse subscription`**
-  - [ ] Typed API client fetching tags, personas, and article jobs.
-  - [ ] Custom React hook subscribing to `/api/events` (EventSource) for live UI state updates without polling.
+  - [x] Typed API client fetching tags, personas, and article jobs.
+  - [x] Custom React hook subscribing to `/api/events` (EventSource) for live UI state updates without polling.
 
-### Milestone 5: Interactive Workflows & UI Polish
+### Milestone 5: Interactive Workflows & UI Polish `[COMPLETED]`
 * **Commit 13: `feat(ui): build persona manager with domain tag chips and ai generation modal`**
-  - [ ] Persona cards with avatar, writing tone badges, and tag chips.
-  - [ ] "Generate Persona with AI" modal calling `POST /api/users/generate`.
+  - [x] Persona cards with avatar, writing tone badges, and tag chips.
+  - [x] "Generate Persona with AI" modal calling `POST /api/users/generate`.
 * **Commit 14: `feat(ui): build split-pane approval board with live markdown editor`**
-  - [ ] Side-by-side split-pane editor with live GitHub-flavored markdown preview.
-  - [ ] "Approve & Publish", "Reject", and "Regenerate" actions with live status feedback.
+  - [x] Side-by-side split-pane editor with live GitHub-flavored markdown preview.
+  - [x] "Approve & Publish", "Reject", and "Regenerate" actions with live status feedback.
 * **Commit 15: `feat(ui): build publishing audit log and external conduit link monitor`**
-  - [ ] Audit log feed displaying published articles with direct hyperlinks to the live Conduit blog.
+  - [x] Audit log feed displaying published articles with direct hyperlinks to the live Conduit blog.
 
 ---
 
 ## 🚀 Track 3: Production Packaging & Portfolio Polish
 
-### Milestone 6: Single-Binary Assembly & Showcase
+### Milestone 6: Single-Binary Assembly & Showcase `[NEXT UP]`
 * **Commit 16: `feat(build): configure embedded spa static serving and sbt assembly`**
   - [ ] Vite production build output copied into `server/src/main/resources/dist`.
   - [ ] ZIO HTTP static resource routing serving embedded SPA on `GET /`.

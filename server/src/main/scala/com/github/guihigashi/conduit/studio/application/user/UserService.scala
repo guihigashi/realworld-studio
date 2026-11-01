@@ -2,11 +2,13 @@ package com.github.guihigashi.conduit.studio.application.user
 
 import com.github.guihigashi.conduit.studio.domain.tag.Tag
 import com.github.guihigashi.conduit.studio.domain.user.*
+import com.github.guihigashi.conduit.studio.infrastructure.conduit.ConduitClient
 import zio.{Tag as _, *}
 
 final case class UserService(
     userRepo: UserRepository,
-    aiGenerator: AiUserGenerator
+    aiGenerator: AiUserGenerator,
+    conduitClient: ConduitClient
 ):
   def generateProfile(command: GenerateUserCommand): Task[GeneratedUserProfile] =
     val domainTags = command.tags.flatMap(t => Tag.from(t).toOption)
@@ -28,7 +30,8 @@ final case class UserService(
         avatarUrl = command.avatarUrl,
         tags = domainTags
       )
-      saved <- userRepo.save(newUser)
+      saved             <- userRepo.save(newUser)
+      _                 <- conduitClient.registerUser(newUser).ignoreLogged
     yield saved).mapError(_.getMessage)
 
   def listUsers: Task[List[User]] =
@@ -44,5 +47,5 @@ final case class UserService(
       }
 
 object UserService:
-  val layer: URLayer[UserRepository & AiUserGenerator, UserService] =
+  val layer: URLayer[UserRepository & AiUserGenerator & ConduitClient, UserService] =
     ZLayer.fromFunction(UserService.apply)

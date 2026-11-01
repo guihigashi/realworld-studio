@@ -14,15 +14,94 @@ final case class LiveConduitClient(
     fallbackToSimulated: Boolean = true
 ) extends ConduitClient:
 
-  private final case class UserAuthResponse(user: UserToken)
-  private final case class UserToken(token: String)
-  private given JsonDecoder[UserToken] = DeriveJsonDecoder.gen[UserToken]
+  private final case class UserAuthResponse(user: ConduitUser)
   private given JsonDecoder[UserAuthResponse] = DeriveJsonDecoder.gen[UserAuthResponse]
 
   private final case class CreateArticleResponse(article: ArticleSlug)
   private final case class ArticleSlug(slug: String)
   private given JsonDecoder[ArticleSlug] = DeriveJsonDecoder.gen[ArticleSlug]
   private given JsonDecoder[CreateArticleResponse] = DeriveJsonDecoder.gen[CreateArticleResponse]
+
+  override def registerUser(username: String, email: String, password: String): Task[ConduitUser] =
+    val call =
+      for
+        url <- ZIO.fromEither(URL.decode(s"${config.baseUrl}/users"))
+        payload = Json.Obj(
+          "user" -> Json.Obj(
+            "username" -> Json.Str(username),
+            "email"    -> Json.Str(email),
+            "password" -> Json.Str(password)
+          )
+        )
+        req = Request
+          .post(url, Body.fromString(payload.toJson))
+          .addHeader(Header.ContentType(MediaType.application.json))
+        res <- client
+          .batched(req)
+          .timeoutFail(new RuntimeException(s"Conduit registration timed out after ${config.timeoutSeconds}s"))(
+            config.timeoutSeconds.seconds
+          )
+        body <- res.body.asString
+        _    <- ZIO.unless(res.status.isSuccess) {
+          ZIO.fail(new RuntimeException(s"Conduit registration failed (${res.status}): $body"))
+        }
+        decoded <- ZIO
+          .fromEither(body.fromJson[UserAuthResponse])
+          .mapError(e => new RuntimeException(s"Failed to decode registration response: $e\nBody: $body"))
+      yield decoded.user
+
+    if fallbackToSimulated then
+      call.catchAll { err =>
+        ZIO.logWarning(s"Conduit registration failed (${err.getMessage}), falling back to simulated user token.") *>
+          ZIO.succeed(
+            ConduitUser(
+              email = email,
+              token = s"simulated_jwt_${UUID.randomUUID().toString.replace("-", "")}",
+              username = username
+            )
+          )
+      }
+    else call
+
+  override def loginUser(email: String, password: String): Task[ConduitUser] =
+    val call =
+      for
+        url <- ZIO.fromEither(URL.decode(s"${config.baseUrl}/users/login"))
+        payload = Json.Obj(
+          "user" -> Json.Obj(
+            "email"    -> Json.Str(email),
+            "password" -> Json.Str(password)
+          )
+        )
+        req = Request
+          .post(url, Body.fromString(payload.toJson))
+          .addHeader(Header.ContentType(MediaType.application.json))
+        res <- client
+          .batched(req)
+          .timeoutFail(new RuntimeException(s"Conduit login timed out after ${config.timeoutSeconds}s"))(
+            config.timeoutSeconds.seconds
+          )
+        body <- res.body.asString
+        _    <- ZIO.unless(res.status.isSuccess) {
+          ZIO.fail(new RuntimeException(s"Conduit login failed (${res.status}): $body"))
+        }
+        decoded <- ZIO
+          .fromEither(body.fromJson[UserAuthResponse])
+          .mapError(e => new RuntimeException(s"Failed to decode login response: $e\nBody: $body"))
+      yield decoded.user
+
+    if fallbackToSimulated then
+      call.catchAll { err =>
+        ZIO.logWarning(s"Conduit login failed (${err.getMessage}), falling back to simulated user token.") *>
+          ZIO.succeed(
+            ConduitUser(
+              email = email,
+              token = s"simulated_jwt_${UUID.randomUUID().toString.replace("-", "")}",
+              username = email.takeWhile(_ != '@')
+            )
+          )
+      }
+    else call
 
   override def publishArticle(
       author: User,
@@ -75,55 +154,11 @@ final case class LiveConduitClient(
     else publish
 
   private def authenticateOrRegister(author: User): Task[String] =
-    loginUser(author).catchAll { _ =>
-      registerUser(author).flatMap(_ => loginUser(author))
-    }
-
-  private def loginUser(author: User): Task[String] =
-    for
-      url <- ZIO.fromEither(URL.decode(s"${config.baseUrl}/users/login"))
-      payload = Json.Obj(
-        "user" -> Json.Obj(
-          "email"    -> Json.Str(author.email),
-          "password" -> Json.Str(author.password)
-        )
-      )
-      req = Request
-        .post(url, Body.fromString(payload.toJson))
-        .addHeader(Header.ContentType(MediaType.application.json))
-      res <- client
-        .batched(req)
-        .timeoutFail(new RuntimeException("Conduit login timed out"))(config.timeoutSeconds.seconds)
-      body <- res.body.asString
-      _    <- ZIO.unless(res.status.isSuccess) {
-        ZIO.fail(new RuntimeException(s"Conduit login failed (${res.status}): $body"))
+    loginUser(author.email, author.password)
+      .map(_.token)
+      .catchAll { _ =>
+        registerUser(author.username, author.email, author.password).map(_.token)
       }
-      decoded <- ZIO
-        .fromEither(body.fromJson[UserAuthResponse])
-        .mapError(e => new RuntimeException(s"Failed to decode login response: $e\nBody: $body"))
-    yield decoded.user.token
-
-  private def registerUser(author: User): Task[Unit] =
-    for
-      url <- ZIO.fromEither(URL.decode(s"${config.baseUrl}/users"))
-      payload = Json.Obj(
-        "user" -> Json.Obj(
-          "username" -> Json.Str(author.username),
-          "email"    -> Json.Str(author.email),
-          "password" -> Json.Str(author.password)
-        )
-      )
-      req = Request
-        .post(url, Body.fromString(payload.toJson))
-        .addHeader(Header.ContentType(MediaType.application.json))
-      res <- client
-        .batched(req)
-        .timeoutFail(new RuntimeException("Conduit registration timed out"))(config.timeoutSeconds.seconds)
-      body <- res.body.asString
-      _    <- ZIO.unless(res.status.isSuccess) {
-        ZIO.fail(new RuntimeException(s"Conduit registration failed (${res.status}): $body"))
-      }
-    yield ()
 
 object LiveConduitClient:
   val live: ZLayer[Client, Config.Error, ConduitClient] =

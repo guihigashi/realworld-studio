@@ -12,6 +12,7 @@ import com.github.guihigashi.conduit.studio.application.user.UserService
 import com.github.guihigashi.conduit.studio.domain.article.{Article, ArticleRepository, ArticleStatus, WritingTone}
 import com.github.guihigashi.conduit.studio.domain.user.{User, UserRepository}
 import com.github.guihigashi.conduit.studio.infrastructure.ai.IntelligentUserGenerator
+import com.github.guihigashi.conduit.studio.infrastructure.conduit.LiveConduitClient
 import com.github.guihigashi.conduit.studio.infrastructure.config.AppConfig
 import com.github.guihigashi.conduit.studio.infrastructure.db.{ArticleEventDispatcher, PostgresArticleRepository, PostgresTagRepository, PostgresUserRepository, SkunkPool}
 import com.github.guihigashi.conduit.studio.presentation.http.ApiRoutes
@@ -271,5 +272,7 @@ object MainEndpointSpec extends ZIOSpecDefault:
     PostgresUserRepository.layer,
     PostgresArticleRepository.layer,
     ArticleEventDispatcher.layer,
+    LiveConduitClient.live,
+    Client.default,
     SkunkPool.live
   ) @@ TestAspect.sequential
