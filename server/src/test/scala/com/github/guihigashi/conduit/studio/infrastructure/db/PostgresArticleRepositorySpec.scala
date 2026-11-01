@@ -2,6 +2,7 @@ package com.github.guihigashi.conduit.studio.infrastructure.db
 
 import java.util.UUID
 import com.typesafe.config.ConfigFactory
+import skunk.implicits.*
 import zio.*
 import zio.config.typesafe.TypesafeConfigProvider
 import zio.test.*
@@ -18,6 +19,8 @@ object PostgresArticleRepositorySpec extends ZIOSpecDefault:
   def spec = suite("PostgresArticleRepositorySpec")(
     test("save, findById, findAll, update, and atomic claimNextForGeneration / claimNextForPublishing") {
       for
+        pool           <- ZIO.service[SkunkPool]
+        _              <- pool.use(_.execute(sql"DELETE FROM articles".command))
         userRepo       <- ZIO.service[UserRepository]
         articleRepo    <- ZIO.service[ArticleRepository]
         dispatcher     <- ZIO.service[ArticleEventDispatcher]
@@ -44,8 +47,12 @@ object PostgresArticleRepositorySpec extends ZIOSpecDefault:
         article        = Article.create(author.id, "ZIO HTTP & Skunk", Set("zio", "scala"))
         saved          <- articleRepo.save(article)
 
-        // Wait for Postgres NOTIFY event via Skunk channel -> Hub
-        event          <- Live.live(subscription.take.timeoutFail(new RuntimeException("Timed out waiting for NOTIFY"))(3.seconds))
+        // Wait for Postgres NOTIFY event for this specific article via Skunk channel -> Hub
+        event          <- Live.live(
+          subscription.take
+            .repeatUntil(_.id == saved.id)
+            .timeoutFail(new RuntimeException("Timed out waiting for NOTIFY"))(5.seconds)
+        )
 
         retrievedOpt   <- articleRepo.findById(saved.id)
         allArticles    <- articleRepo.findAll(status = Some(ArticleStatus.QueuedGeneration), authorId = Some(author.id))

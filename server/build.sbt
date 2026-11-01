@@ -10,6 +10,7 @@ lazy val root = project
     name    := "server",
     version := "0.1.0-SNAPSHOT",
     Test / fork := true,
+    Test / parallelExecution := false,
     libraryDependencies ++= Seq(
       "dev.zio" %% "zio"               % zioVersion,
       "dev.zio" %% "zio-test"          % zioVersion % Test,
