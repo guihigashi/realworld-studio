@@ -35,7 +35,6 @@ object LlmClientSpec extends ZIOSpecDefault:
           |  "suggestedEmail": "effect_guru@conduit.studio",
           |  "suggestedPassword": "super_secret_123",
           |  "suggestedBio": "Pioneering functional effect systems in Scala 3.",
-          |  "writingTone": "TechnicalDeepDive",
           |  "tags": [{"value": "scala"}, {"value": "zio"}]
           |}""".stripMargin
 
@@ -44,12 +43,12 @@ object LlmClientSpec extends ZIOSpecDefault:
       val tags       = List(Tag("scala"), Tag("zio"))
 
       for {
-        profile <- generator.generateProfile(tags, Some(WritingTone.TechnicalDeepDive))
+        profile <- generator.generateProfile(tags)
       } yield assertTrue(
         profile.suggestedUsername == "effect_guru",
         profile.suggestedEmail == "effect_guru@conduit.studio",
         profile.suggestedPassword == "super_secret_123",
-        profile.writingTone == WritingTone.TechnicalDeepDive,
+        profile.suggestedBio == "Pioneering functional effect systems in Scala 3.",
         profile.tags.map(_.value) == List("scala", "zio")
       )
     },
@@ -64,8 +63,8 @@ object LlmClientSpec extends ZIOSpecDefault:
       assertTrue(
         schemaString.contains("suggestedUsername"),
         schemaString.contains("suggestedEmail"),
-        schemaString.contains("writingTone"),
-        schemaString.contains("Academic")
+        schemaString.contains("suggestedBio"),
+        schemaString.contains("tags")
       )
     },
     test("ChatCompletionRequest serializes with model, response_format and chat_template_kwargs") {
@@ -120,11 +119,10 @@ object LlmClientSpec extends ZIOSpecDefault:
       val tags      = List(Tag("rust"), Tag("distributed-systems"))
 
       for {
-        profile <- generator.generateProfile(tags, Some(WritingTone.Conversational))
+        profile <- generator.generateProfile(tags)
       } yield assertTrue(
         profile.suggestedUsername.contains("ferris_builder"),
-        profile.suggestedBio.contains("Systems Hacker"),
-        profile.writingTone == WritingTone.Conversational
+        profile.suggestedBio.contains("Systems Hacker")
       )
     }
   )

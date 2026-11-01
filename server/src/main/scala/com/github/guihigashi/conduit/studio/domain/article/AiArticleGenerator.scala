@@ -1,7 +1,6 @@
 package com.github.guihigashi.conduit.studio.domain.article
 
 import com.github.guihigashi.conduit.studio.domain.tag.Tag
-import com.github.guihigashi.conduit.studio.domain.user.WritingTone
 import zio.*
 
 trait AiArticleGenerator:
@@ -9,5 +8,6 @@ trait AiArticleGenerator:
       topic: String,
       authorTags: Set[Tag],
       writingTone: WritingTone,
-      requestedTags: Set[String]
+      requestedTags: Set[String],
+      targetWordCount: Option[Int] = None
   ): Task[GeneratedArticle]

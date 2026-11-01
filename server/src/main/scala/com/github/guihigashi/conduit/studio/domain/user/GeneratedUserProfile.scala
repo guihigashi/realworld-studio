@@ -10,6 +10,5 @@ final case class GeneratedUserProfile(
     suggestedEmail: String,
     suggestedPassword: String,
     suggestedBio: String,
-    writingTone: WritingTone,
     tags: List[Tag]
 ) derives Schema

@@ -7,11 +7,9 @@ import zio.*
 final case class IntelligentUserGenerator() extends AiUserGenerator:
 
   override def generateProfile(
-      tags: List[Tag],
-      tone: Option[WritingTone]
+      tags: List[Tag]
   ): Task[GeneratedUserProfile] =
     ZIO.succeed {
-      val selectedTone = tone.getOrElse(WritingTone.TechnicalDeepDive)
       val tagValues    = tags.map(_.value.toLowerCase)
 
       val (namePrefix, domainTitle) =
@@ -35,22 +33,13 @@ final case class IntelligentUserGenerator() extends AiUserGenerator:
       val password   = s"pass_${username}_$suffix"
       val tagsPhrase = if tags.nonEmpty then tags.map(t => s"#${t.value}").mkString(" ") else "#general"
 
-      val toneDescription = selectedTone match
-        case WritingTone.Academic          => "Author of peer-reviewed analysis and formal proofs."
-        case WritingTone.Conversational    => "Passionate about pragmatic engineering and tech discussions."
-        case WritingTone.Provocative       => "Challenging dogmas and questioning industry consensus."
-        case WritingTone.TechnicalDeepDive => "Deep diving into bytecode, telemetry, and kernel-level performance."
-        case WritingTone.Storyteller       => "Sharing war stories from production outages and team scaling."
-        case WritingTone.Humorous          => "Turning production incidents into memes and actionable postmortems."
-
-      val bio = s"$domainTitle. $toneDescription Specializing in $tagsPhrase."
+      val bio = s"$domainTitle. Passionate about software craftsmanship, specializing in $tagsPhrase."
 
       GeneratedUserProfile(
         suggestedUsername = username,
         suggestedEmail = email,
         suggestedPassword = password,
         suggestedBio = bio,
-        writingTone = selectedTone,
         tags = tags
       )
     }

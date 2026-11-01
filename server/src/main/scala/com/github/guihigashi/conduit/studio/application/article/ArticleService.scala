@@ -19,7 +19,9 @@ final case class ArticleService(
       article   = Article.create(
         authorId = command.authorId,
         topic = command.topic,
-        tagList = command.tagList
+        tagList = command.tagList,
+        tone = command.tone,
+        targetWordCount = command.targetWordCount
       )
       saved     <- articleRepo.save(article)
     yield saved).mapError(_.getMessage)
@@ -36,6 +38,21 @@ final case class ArticleService(
         case Some(a) => ZIO.succeed(a)
         case None    => ZIO.fail(s"Article with id '$id' not found")
       }
+
+  def updateArticle(id: UUID, command: UpdateArticleCommand): IO[String, Article] =
+    (for
+      articleOpt <- articleRepo.findById(id)
+      article    <- ZIO.fromOption(articleOpt).orElseFail(new RuntimeException(s"Article with id '$id' not found"))
+      updated    <- ZIO.fromEither(
+        article.updateDraft(
+          title = command.title,
+          description = command.description,
+          body = command.body,
+          tags = command.tagList
+        )
+      ).mapError(new RuntimeException(_))
+      saved      <- articleRepo.update(updated)
+    yield saved).mapError(_.getMessage)
 
   def approveArticle(id: UUID, command: ApproveArticleCommand): IO[String, Article] =
     (for
@@ -59,7 +76,9 @@ final case class ArticleService(
       regenerated <- ZIO.fromEither(
         article.regenerate(
           newTopic = command.topic,
-          newTags = command.tagList
+          newTags = command.tagList,
+          newTone = command.tone,
+          newWordCount = command.targetWordCount
         )
       ).mapError(new RuntimeException(_))
       updated     <- articleRepo.update(regenerated)

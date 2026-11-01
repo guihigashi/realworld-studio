@@ -1,4 +1,4 @@
-package com.github.guihigashi.conduit.studio.domain.user
+package com.github.guihigashi.conduit.studio.domain.article
 
 import zio.schema.*
 

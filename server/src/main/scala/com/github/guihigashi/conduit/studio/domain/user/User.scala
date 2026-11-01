@@ -11,7 +11,6 @@ final case class User(
     password: String,
     bio: String,
     avatarUrl: Option[String],
-    writingTone: WritingTone,
     tags: Set[Tag]
 ) derives Schema
 
@@ -22,7 +21,6 @@ object User:
       password: String,
       bio: String,
       avatarUrl: Option[String],
-      writingTone: WritingTone,
       tags: Set[Tag]
   ): User =
     User(
@@ -32,6 +30,5 @@ object User:
       password = password,
       bio = bio.trim,
       avatarUrl = avatarUrl.map(_.trim),
-      writingTone = writingTone,
       tags = tags
     )

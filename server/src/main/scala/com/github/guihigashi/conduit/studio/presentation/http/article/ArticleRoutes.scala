@@ -38,6 +38,9 @@ final case class ArticleRoutes(
       ArticleEndpoints.getArticle.implement { id =>
         articleService.getArticle(id)
       },
+      ArticleEndpoints.updateArticle.implement { (id, cmd) =>
+        articleService.updateArticle(id, cmd)
+      },
       ArticleEndpoints.approveArticle.implement { (id, cmd) =>
         articleService.approveArticle(id, cmd)
       },

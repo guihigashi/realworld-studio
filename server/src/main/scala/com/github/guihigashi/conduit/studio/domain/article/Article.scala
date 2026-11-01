@@ -9,11 +9,12 @@ final case class Article(
     authorId: UUID,
     topic: String,
     title: Option[String],
-    slug: Option[String],
     description: Option[String],
     body: Option[String],
     tagList: Set[String],
     status: ArticleStatus,
+    tone: WritingTone = WritingTone.TechnicalDeepDive,
+    targetWordCount: Option[Int] = None,
     conduitUrl: Option[String] = None,
     errorMessage: Option[String] = None,
     createdAt: Instant = Instant.now(),
@@ -40,6 +41,26 @@ final case class Article(
       )
     }
 
+  def updateDraft(
+      title: Option[String] = None,
+      description: Option[String] = None,
+      body: Option[String] = None,
+      tags: Option[Set[String]] = None,
+      now: Instant = Instant.now()
+  ): Either[String, Article] =
+    if status == ArticleStatus.PendingApproval || status == ArticleStatus.Generating then
+      Right(
+        copy(
+          title = title.orElse(this.title),
+          description = description.orElse(this.description),
+          body = body.orElse(this.body),
+          tagList = tags.getOrElse(this.tagList),
+          updatedAt = now
+        )
+      )
+    else
+      Left(s"Cannot edit article in status $status. Only drafts in PendingApproval can be edited.")
+
   def approve(
       title: Option[String] = None,
       description: Option[String] = None,
@@ -60,10 +81,9 @@ final case class Article(
   def startPublishing(now: Instant = Instant.now()): Either[String, Article] =
     transition(ArticleStatus.Publishing, now).map(_.copy(errorMessage = None))
 
-  def markPublished(slug: String, conduitUrl: String, now: Instant = Instant.now()): Either[String, Article] =
+  def markPublished(conduitUrl: String, now: Instant = Instant.now()): Either[String, Article] =
     transition(ArticleStatus.Published, now).map { a =>
       a.copy(
-        slug = Some(slug),
         conduitUrl = Some(conduitUrl),
         errorMessage = None
       )
@@ -77,12 +97,16 @@ final case class Article(
   def regenerate(
       newTopic: Option[String] = None,
       newTags: Option[Set[String]] = None,
+      newTone: Option[WritingTone] = None,
+      newWordCount: Option[Int] = None,
       now: Instant = Instant.now()
   ): Either[String, Article] =
     transition(ArticleStatus.QueuedGeneration, now).map { a =>
       a.copy(
         topic = newTopic.getOrElse(a.topic),
         tagList = newTags.getOrElse(a.tagList),
+        tone = newTone.getOrElse(a.tone),
+        targetWordCount = newWordCount.orElse(a.targetWordCount),
         errorMessage = None
       )
     }
@@ -98,6 +122,8 @@ object Article:
       authorId: UUID,
       topic: String,
       tagList: Set[String],
+      tone: WritingTone = WritingTone.TechnicalDeepDive,
+      targetWordCount: Option[Int] = None,
       now: Instant = Instant.now()
   ): Article =
     Article(
@@ -105,11 +131,12 @@ object Article:
       authorId = authorId,
       topic = topic.trim,
       title = None,
-      slug = None,
       description = None,
       body = None,
       tagList = tagList.map(_.trim.toLowerCase),
       status = ArticleStatus.QueuedGeneration,
+      tone = tone,
+      targetWordCount = targetWordCount,
       conduitUrl = None,
       errorMessage = None,
       createdAt = now,

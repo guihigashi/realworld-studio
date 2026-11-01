@@ -56,7 +56,7 @@ final case class ArticlePublishingWorker(
           tagList = article.tagList
         )
         updated   <- ZIO.fromEither(
-          article.markPublished(slug = published.slug, conduitUrl = published.url)
+          article.markPublished(conduitUrl = published.url)
         ).mapError(new RuntimeException(_))
         _         <- articleRepo.update(updated)
         _         <- ZIO.logInfo(s"Successfully published article '${title}' to Conduit (${published.url})")

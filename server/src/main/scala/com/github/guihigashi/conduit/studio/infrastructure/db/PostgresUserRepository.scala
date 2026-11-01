@@ -18,16 +18,15 @@ final case class PostgresUserRepository(pool: SkunkPool) extends UserRepository:
       email: String,
       password: String,
       bio: String,
-      avatarUrl: Option[String],
-      writingTone: String
+      avatarUrl: Option[String]
   )
 
   private val personaRow: Codec[PersonaRow] =
-    (uuid ~ varchar(100) ~ varchar(255) ~ varchar(255) ~ text ~ text.opt ~ varchar(50)).imap {
-      case id ~ username ~ email ~ password ~ bio ~ avatar ~ tone =>
-        PersonaRow(id, username, email, password, bio, avatar, tone)
+    (uuid ~ varchar(100) ~ varchar(255) ~ varchar(255) ~ text ~ text.opt).imap {
+      case id ~ username ~ email ~ password ~ bio ~ avatar =>
+        PersonaRow(id, username, email, password, bio, avatar)
     } { p =>
-      p.id ~ p.username ~ p.email ~ p.password ~ p.bio ~ p.avatarUrl ~ p.writingTone
+      p.id ~ p.username ~ p.email ~ p.password ~ p.bio ~ p.avatarUrl
     }
 
   private val selectTagsForPersona: Query[UUID, Tag] =
@@ -41,7 +40,7 @@ final case class PostgresUserRepository(pool: SkunkPool) extends UserRepository:
 
   private val insertPersona: Command[PersonaRow] =
     sql"""
-      INSERT INTO personas (id, username, email, password, bio, avatar_url, writing_tone)
+      INSERT INTO personas (id, username, email, password, bio, avatar_url)
       VALUES ($personaRow)
     """.command
 
@@ -59,8 +58,7 @@ final case class PostgresUserRepository(pool: SkunkPool) extends UserRepository:
       email = user.email,
       password = user.password,
       bio = user.bio,
-      avatarUrl = user.avatarUrl,
-      writingTone = user.writingTone.toString
+      avatarUrl = user.avatarUrl
     )
     pool.use { session =>
       session.transaction.use { _ =>
@@ -75,7 +73,7 @@ final case class PostgresUserRepository(pool: SkunkPool) extends UserRepository:
 
   private val selectById: Query[UUID, PersonaRow] =
     sql"""
-      SELECT id, username, email, password, bio, avatar_url, writing_tone
+      SELECT id, username, email, password, bio, avatar_url
       FROM personas
       WHERE id = $uuid
     """.query(personaRow)
@@ -95,7 +93,6 @@ final case class PostgresUserRepository(pool: SkunkPool) extends UserRepository:
           password = row.password,
           bio = row.bio,
           avatarUrl = row.avatarUrl,
-          writingTone = WritingTone.fromString(row.writingTone).getOrElse(WritingTone.TechnicalDeepDive),
           tags = tags.toSet
         )
       }
@@ -103,7 +100,7 @@ final case class PostgresUserRepository(pool: SkunkPool) extends UserRepository:
 
   private val selectByUsername: Query[String, PersonaRow] =
     sql"""
-      SELECT id, username, email, password, bio, avatar_url, writing_tone
+      SELECT id, username, email, password, bio, avatar_url
       FROM personas
       WHERE username = ${varchar(100)}
     """.query(personaRow)
@@ -126,7 +123,6 @@ final case class PostgresUserRepository(pool: SkunkPool) extends UserRepository:
                     password = row.password,
                     bio = row.bio,
                     avatarUrl = row.avatarUrl,
-                    writingTone = WritingTone.fromString(row.writingTone).getOrElse(WritingTone.TechnicalDeepDive),
                     tags = tags.toSet
                   )
                 )
@@ -137,7 +133,7 @@ final case class PostgresUserRepository(pool: SkunkPool) extends UserRepository:
 
   private val selectAll: Query[Void, PersonaRow] =
     sql"""
-      SELECT id, username, email, password, bio, avatar_url, writing_tone
+      SELECT id, username, email, password, bio, avatar_url
       FROM personas
       ORDER BY username ASC
     """.query(personaRow)
@@ -156,7 +152,6 @@ final case class PostgresUserRepository(pool: SkunkPool) extends UserRepository:
                 password = row.password,
                 bio = row.bio,
                 avatarUrl = row.avatarUrl,
-                writingTone = WritingTone.fromString(row.writingTone).getOrElse(WritingTone.TechnicalDeepDive),
                 tags = tags.toSet
               )
             }

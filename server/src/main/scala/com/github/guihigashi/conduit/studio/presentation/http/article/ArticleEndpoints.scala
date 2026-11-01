@@ -17,14 +17,20 @@ object ArticleEndpoints:
 
   val listArticles =
     Endpoint(Method.GET / "api" / "articles")
-      .query(query[Option[String]]("status"))
-      .query(query[Option[UUID]]("authorId"))
+      .query(query[String]("status").optional)
+      .query(query[UUID]("authorId").optional)
       .out[List[Article]]
 
   val getArticle =
     Endpoint(Method.GET / "api" / "articles" / uuid("id"))
       .out[Article]
       .outError[String](Status.NotFound)
+
+  val updateArticle =
+    Endpoint(Method.PUT / "api" / "articles" / uuid("id"))
+      .in[UpdateArticleCommand]
+      .out[Article]
+      .outError[String](Status.BadRequest)
 
   val approveArticle =
     Endpoint(Method.POST / "api" / "articles" / uuid("id") / "approve")
@@ -38,4 +44,4 @@ object ArticleEndpoints:
       .out[Article]
       .outError[String](Status.BadRequest)
 
-  val all = List(enqueueArticle, listArticles, getArticle, approveArticle, regenerateArticle)
+  val all = List(enqueueArticle, listArticles, getArticle, updateArticle, approveArticle, regenerateArticle)

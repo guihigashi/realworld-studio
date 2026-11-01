@@ -10,7 +10,7 @@ final case class UserService(
 ):
   def generateProfile(command: GenerateUserCommand): Task[GeneratedUserProfile] =
     val domainTags = command.tags.flatMap(t => Tag.from(t).toOption)
-    aiGenerator.generateProfile(domainTags, command.tone)
+    aiGenerator.generateProfile(domainTags)
 
   def createUser(command: CreateUserCommand): IO[String, User] =
     (for
@@ -26,7 +26,6 @@ final case class UserService(
         password = effectivePassword,
         bio = command.bio,
         avatarUrl = command.avatarUrl,
-        writingTone = command.writingTone,
         tags = domainTags
       )
       saved <- userRepo.save(newUser)

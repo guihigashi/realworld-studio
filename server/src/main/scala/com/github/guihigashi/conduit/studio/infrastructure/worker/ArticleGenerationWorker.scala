@@ -49,8 +49,9 @@ final case class ArticleGenerationWorker(
           generator.generateArticle(
             topic = article.topic,
             authorTags = author.tags,
-            writingTone = author.writingTone,
-            requestedTags = article.tagList
+            writingTone = article.tone,
+            requestedTags = article.tagList,
+            targetWordCount = article.targetWordCount
           )
         )
         drafted   <- ZIO.fromEither(

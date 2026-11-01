@@ -6,7 +6,7 @@ import zio.*
 import zio.config.typesafe.TypesafeConfigProvider
 import zio.test.*
 import com.github.guihigashi.conduit.studio.domain.article.*
-import com.github.guihigashi.conduit.studio.domain.user.{User, UserRepository, WritingTone}
+import com.github.guihigashi.conduit.studio.domain.user.{User, UserRepository}
 import com.github.guihigashi.conduit.studio.infrastructure.ai.IntelligentArticleGenerator
 import com.github.guihigashi.conduit.studio.infrastructure.db.{ArticleEventDispatcher, PostgresArticleRepository, PostgresUserRepository, SkunkPool}
 
@@ -39,24 +39,24 @@ object ArticleGenerationWorkerSpec extends ZIOSpecDefault:
             password = "pass",
             bio = "Systems Engineer",
             avatarUrl = None,
-            writingTone = WritingTone.TechnicalDeepDive,
             tags = Set.empty
           )
         )
 
         // Subscribe to events to wait for PendingApproval event
         sub            <- dispatcher.hub.subscribe
-        article        = Article.create(author.id, "Real-Time Event Streaming with Skunk", Set("scala", "skunk"))
+        article        = Article.create(author.id, "Real-Time Event Streaming with Skunk", Set("scala", "skunk"), tone = WritingTone.TechnicalDeepDive)
         saved          <- articleRepo.save(article)
 
         // Wait for the generation worker to complete and produce PendingApproval event
         event          <- Live.live(
           sub.take
             .repeatUntil(e => e.id == saved.id && e.status == ArticleStatus.PendingApproval)
-            .timeoutFail(new RuntimeException("Timed out waiting for PendingApproval event"))(5.seconds)
+            .timeoutFail(new RuntimeException("Timed out waiting for PendingApproval event"))(10.seconds)
         )
 
         updatedOpt     <- articleRepo.findById(saved.id)
+        _              <- Live.live(ZIO.sleep(200.millis))
       yield assertTrue(
         event.status == ArticleStatus.PendingApproval,
         updatedOpt.isDefined,

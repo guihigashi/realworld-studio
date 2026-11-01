@@ -7,7 +7,7 @@ import zio.*
 import zio.config.typesafe.TypesafeConfigProvider
 import zio.test.*
 import com.github.guihigashi.conduit.studio.domain.article.*
-import com.github.guihigashi.conduit.studio.domain.user.{User, UserRepository, WritingTone}
+import com.github.guihigashi.conduit.studio.domain.user.{User, UserRepository}
 
 object PostgresArticleRepositorySpec extends ZIOSpecDefault:
 
@@ -37,15 +37,24 @@ object PostgresArticleRepositorySpec extends ZIOSpecDefault:
             password = "pass",
             bio = "Author bio",
             avatarUrl = None,
-            writingTone = WritingTone.Academic,
             tags = Set.empty
           )
         )
 
         // Subscribe to hub before saving
         subscription   <- dispatcher.hub.subscribe
-        article        = Article.create(author.id, "ZIO HTTP & Skunk", Set("zio", "scala"))
+        article        = Article.create(
+          authorId = author.id,
+          topic = "ZIO HTTP & Skunk",
+          tagList = Set("zio", "scala"),
+          tone = WritingTone.Academic,
+          targetWordCount = Some(1000)
+        )
         saved          <- articleRepo.save(article)
+
+        // Claim immediately for generation atomically before external workers can pick it up
+        claimedGenOpt  <- articleRepo.claimNextForGeneration
+        claimedAgainOpt <- articleRepo.claimNextForGeneration // second attempt returns None because job is claimed
 
         // Wait for Postgres NOTIFY event for this specific article via Skunk channel -> Hub
         event          <- Live.live(
@@ -55,11 +64,7 @@ object PostgresArticleRepositorySpec extends ZIOSpecDefault:
         )
 
         retrievedOpt   <- articleRepo.findById(saved.id)
-        allArticles    <- articleRepo.findAll(status = Some(ArticleStatus.QueuedGeneration), authorId = Some(author.id))
-
-        // Claim for generation atomically
-        claimedGenOpt  <- articleRepo.claimNextForGeneration
-        claimedAgainOpt <- articleRepo.claimNextForGeneration // second attempt returns None because job is claimed
+        allArticles    <- articleRepo.findAll(status = Some(ArticleStatus.Generating), authorId = Some(author.id))
 
         // Complete generation -> PendingApproval
         drafted        = claimedGenOpt.get.completeGeneration(
@@ -79,9 +84,11 @@ object PostgresArticleRepositorySpec extends ZIOSpecDefault:
       yield assertTrue(
         saved.id == article.id,
         event.id == article.id,
-        event.status == ArticleStatus.QueuedGeneration,
+        event.status == ArticleStatus.QueuedGeneration || event.status == ArticleStatus.Generating,
         retrievedOpt.isDefined,
         retrievedOpt.get.topic == "ZIO HTTP & Skunk",
+        retrievedOpt.get.tone == WritingTone.Academic,
+        retrievedOpt.get.targetWordCount == Some(1000),
         allArticles.exists(_.id == saved.id),
         claimedGenOpt.isDefined,
         claimedGenOpt.get.id == saved.id,

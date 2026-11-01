@@ -1,9 +1,8 @@
 package com.github.guihigashi.conduit.studio.infrastructure.ai
 
 import zio.*
-import com.github.guihigashi.conduit.studio.domain.article.{AiArticleGenerator, GeneratedArticle}
+import com.github.guihigashi.conduit.studio.domain.article.{AiArticleGenerator, GeneratedArticle, WritingTone}
 import com.github.guihigashi.conduit.studio.domain.tag.Tag
-import com.github.guihigashi.conduit.studio.domain.user.WritingTone
 
 final case class IntelligentArticleGenerator() extends AiArticleGenerator:
 
@@ -11,15 +10,17 @@ final case class IntelligentArticleGenerator() extends AiArticleGenerator:
       topic: String,
       authorTags: Set[Tag],
       writingTone: WritingTone,
-      requestedTags: Set[String]
+      requestedTags: Set[String],
+      targetWordCount: Option[Int] = None
   ): Task[GeneratedArticle] =
     val effectiveTags = if requestedTags.nonEmpty then requestedTags else authorTags.map(_.value)
     val tagsList = (effectiveTags + "architecture").toList
+    val wordCountTarget = targetWordCount.getOrElse(600)
     val body =
       s"""# $topic
          |
          |## Introduction
-         |Modern software engineering requires continuous evolution in how we approach $topic. In this article, written from a ${writingTone} perspective, we explore the core principles and practical architectural patterns.
+         |Modern software engineering requires continuous evolution in how we approach $topic. In this article, written from a ${writingTone} perspective (~$wordCountTarget words target), we explore the core principles and practical architectural patterns.
          |
          |## Core Concepts
          |When designing systems focused on ${effectiveTags.mkString(", ")}, type safety, modular boundaries, and operational simplicity must remain paramount.

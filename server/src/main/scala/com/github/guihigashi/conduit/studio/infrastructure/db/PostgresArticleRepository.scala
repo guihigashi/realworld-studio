@@ -9,7 +9,7 @@ import skunk.data.Arr
 import skunk.implicits.*
 import zio.*
 import zio.interop.catz.*
-import com.github.guihigashi.conduit.studio.domain.article.{Article, ArticleRepository, ArticleStatus}
+import com.github.guihigashi.conduit.studio.domain.article.{Article, ArticleRepository, ArticleStatus, WritingTone}
 
 final case class PostgresArticleRepository(pool: SkunkPool) extends ArticleRepository:
 
@@ -18,11 +18,12 @@ final case class PostgresArticleRepository(pool: SkunkPool) extends ArticleRepos
       authorId: UUID,
       topic: String,
       title: Option[String],
-      slug: Option[String],
       description: Option[String],
       body: Option[String],
       tagList: Arr[String],
       status: String,
+      tone: String,
+      targetWordCount: Option[Int],
       conduitUrl: Option[String],
       errorMessage: Option[String],
       createdAt: OffsetDateTime,
@@ -30,11 +31,11 @@ final case class PostgresArticleRepository(pool: SkunkPool) extends ArticleRepos
   )
 
   private val articleRowCodec: Codec[ArticleRow] =
-    (uuid ~ uuid ~ text ~ text.opt ~ text.opt ~ text.opt ~ text.opt ~ _text ~ varchar(50) ~ text.opt ~ text.opt ~ timestamptz ~ timestamptz).imap {
-      case id ~ authorId ~ topic ~ title ~ slug ~ desc ~ body ~ tags ~ status ~ conduitUrl ~ err ~ created ~ updated =>
-        ArticleRow(id, authorId, topic, title, slug, desc, body, tags, status, conduitUrl, err, created, updated)
+    (uuid ~ uuid ~ text ~ text.opt ~ text.opt ~ text.opt ~ _text ~ varchar(50) ~ varchar(50) ~ int4.opt ~ text.opt ~ text.opt ~ timestamptz ~ timestamptz).imap {
+      case id ~ authorId ~ topic ~ title ~ desc ~ body ~ tags ~ status ~ tone ~ targetWordCount ~ conduitUrl ~ err ~ created ~ updated =>
+        ArticleRow(id, authorId, topic, title, desc, body, tags, status, tone, targetWordCount, conduitUrl, err, created, updated)
     } { a =>
-      a.id ~ a.authorId ~ a.topic ~ a.title ~ a.slug ~ a.description ~ a.body ~ a.tagList ~ a.status ~ a.conduitUrl ~ a.errorMessage ~ a.createdAt ~ a.updatedAt
+      a.id ~ a.authorId ~ a.topic ~ a.title ~ a.description ~ a.body ~ a.tagList ~ a.status ~ a.tone ~ a.targetWordCount ~ a.conduitUrl ~ a.errorMessage ~ a.createdAt ~ a.updatedAt
     }
 
   private def rowToArticle(row: ArticleRow): Article =
@@ -43,11 +44,12 @@ final case class PostgresArticleRepository(pool: SkunkPool) extends ArticleRepos
       authorId = row.authorId,
       topic = row.topic,
       title = row.title,
-      slug = row.slug,
       description = row.description,
       body = row.body,
       tagList = row.tagList.toList.toSet,
       status = ArticleStatus.fromString(row.status).getOrElse(ArticleStatus.QueuedGeneration),
+      tone = WritingTone.fromString(row.tone).getOrElse(WritingTone.TechnicalDeepDive),
+      targetWordCount = row.targetWordCount,
       conduitUrl = row.conduitUrl,
       errorMessage = row.errorMessage,
       createdAt = row.createdAt.toInstant,
@@ -60,11 +62,12 @@ final case class PostgresArticleRepository(pool: SkunkPool) extends ArticleRepos
       authorId = article.authorId,
       topic = article.topic,
       title = article.title,
-      slug = article.slug,
       description = article.description,
       body = article.body,
       tagList = Arr.fromFoldable(article.tagList.toList),
       status = article.status.toString,
+      tone = article.tone.toString,
+      targetWordCount = article.targetWordCount,
       conduitUrl = article.conduitUrl,
       errorMessage = article.errorMessage,
       createdAt = article.createdAt.atOffset(ZoneOffset.UTC),
@@ -74,7 +77,7 @@ final case class PostgresArticleRepository(pool: SkunkPool) extends ArticleRepos
   private val insertArticle: Command[ArticleRow] =
     sql"""
       INSERT INTO articles (
-        id, author_id, topic, title, slug, description, body, tag_list, status, conduit_url, error_message, created_at, updated_at
+        id, author_id, topic, title, description, body, tag_list, status, writing_tone, target_word_count, conduit_url, error_message, created_at, updated_at
       ) VALUES ($articleRowCodec)
     """.command
 
@@ -92,11 +95,12 @@ final case class PostgresArticleRepository(pool: SkunkPool) extends ArticleRepos
       UPDATE articles
       SET topic = $text,
           title = ${text.opt},
-          slug = ${text.opt},
           description = ${text.opt},
           body = ${text.opt},
           tag_list = $_text,
           status = ${varchar(50)},
+          writing_tone = ${varchar(50)},
+          target_word_count = ${int4.opt},
           conduit_url = ${text.opt},
           error_message = ${text.opt},
           updated_at = $timestamptz
@@ -108,11 +112,12 @@ final case class PostgresArticleRepository(pool: SkunkPool) extends ArticleRepos
     val params = (
       row.topic,
       row.title,
-      row.slug,
       row.description,
       row.body,
       row.tagList,
       row.status,
+      row.tone,
+      row.targetWordCount,
       row.conduitUrl,
       row.errorMessage,
       row.updatedAt,
@@ -127,7 +132,7 @@ final case class PostgresArticleRepository(pool: SkunkPool) extends ArticleRepos
 
   private val selectById: Query[UUID, ArticleRow] =
     sql"""
-      SELECT id, author_id, topic, title, slug, description, body, tag_list, status, conduit_url, error_message, created_at, updated_at
+      SELECT id, author_id, topic, title, description, body, tag_list, status, writing_tone, target_word_count, conduit_url, error_message, created_at, updated_at
       FROM articles
       WHERE id = $uuid
     """.query(articleRowCodec)
@@ -142,14 +147,14 @@ final case class PostgresArticleRepository(pool: SkunkPool) extends ArticleRepos
 
   private val selectAll: Query[Void, ArticleRow] =
     sql"""
-      SELECT id, author_id, topic, title, slug, description, body, tag_list, status, conduit_url, error_message, created_at, updated_at
+      SELECT id, author_id, topic, title, description, body, tag_list, status, writing_tone, target_word_count, conduit_url, error_message, created_at, updated_at
       FROM articles
       ORDER BY created_at DESC
     """.query(articleRowCodec)
 
   private val selectByStatus: Query[String, ArticleRow] =
     sql"""
-      SELECT id, author_id, topic, title, slug, description, body, tag_list, status, conduit_url, error_message, created_at, updated_at
+      SELECT id, author_id, topic, title, description, body, tag_list, status, writing_tone, target_word_count, conduit_url, error_message, created_at, updated_at
       FROM articles
       WHERE status ILIKE ${varchar(50)}
       ORDER BY created_at DESC
@@ -157,7 +162,7 @@ final case class PostgresArticleRepository(pool: SkunkPool) extends ArticleRepos
 
   private val selectByAuthor: Query[UUID, ArticleRow] =
     sql"""
-      SELECT id, author_id, topic, title, slug, description, body, tag_list, status, conduit_url, error_message, created_at, updated_at
+      SELECT id, author_id, topic, title, description, body, tag_list, status, writing_tone, target_word_count, conduit_url, error_message, created_at, updated_at
       FROM articles
       WHERE author_id = $uuid
       ORDER BY created_at DESC
@@ -165,7 +170,7 @@ final case class PostgresArticleRepository(pool: SkunkPool) extends ArticleRepos
 
   private val selectByStatusAndAuthor =
     sql"""
-      SELECT id, author_id, topic, title, slug, description, body, tag_list, status, conduit_url, error_message, created_at, updated_at
+      SELECT id, author_id, topic, title, description, body, tag_list, status, writing_tone, target_word_count, conduit_url, error_message, created_at, updated_at
       FROM articles
       WHERE status ILIKE ${varchar(50)} AND author_id = $uuid
       ORDER BY created_at DESC
@@ -197,7 +202,7 @@ final case class PostgresArticleRepository(pool: SkunkPool) extends ArticleRepos
         FOR UPDATE SKIP LOCKED
         LIMIT 1
       )
-      RETURNING id, author_id, topic, title, slug, description, body, tag_list, status, conduit_url, error_message, created_at, updated_at
+      RETURNING id, author_id, topic, title, description, body, tag_list, status, writing_tone, target_word_count, conduit_url, error_message, created_at, updated_at
     """.query(articleRowCodec)
 
   override def claimNextForGeneration: Task[Option[Article]] =
@@ -216,7 +221,7 @@ final case class PostgresArticleRepository(pool: SkunkPool) extends ArticleRepos
         FOR UPDATE SKIP LOCKED
         LIMIT 1
       )
-      RETURNING id, author_id, topic, title, slug, description, body, tag_list, status, conduit_url, error_message, created_at, updated_at
+      RETURNING id, author_id, topic, title, description, body, tag_list, status, writing_tone, target_word_count, conduit_url, error_message, created_at, updated_at
     """.query(articleRowCodec)
 
   override def claimNextForPublishing: Task[Option[Article]] =

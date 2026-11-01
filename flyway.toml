@@ -1,0 +1,13 @@
+[flyway]
+locations = ["filesystem:server/src/main/resources/db/migration"]
+cleanDisabled = false
+
+[environments.default]
+url = "jdbc:postgresql://localhost:5432/postgres"
+user = "postgres"
+password = "password"
+
+[environments.test]
+url = "jdbc:postgresql://localhost:5432/postgres_test"
+user = "postgres"
+password = "password"

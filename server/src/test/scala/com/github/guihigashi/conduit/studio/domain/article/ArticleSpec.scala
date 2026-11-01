@@ -15,8 +15,9 @@ object ArticleSpec extends ZIOSpecDefault:
         article.topic == "Advanced ZIO Concurrency",
         article.status == ArticleStatus.QueuedGeneration,
         article.tagList == Set("scala", "zio", "fibers"),
+        article.tone == WritingTone.TechnicalDeepDive,
+        article.targetWordCount.isEmpty,
         article.title.isEmpty,
-        article.slug.isEmpty,
         article.description.isEmpty,
         article.body.isEmpty,
         article.conduitUrl.isEmpty,
@@ -40,7 +41,7 @@ object ArticleSpec extends ZIOSpecDefault:
             title = Some("High-Performance Postgres with Skunk and ZIO")
           )
           publishing <- approved.startPublishing()
-          published  <- publishing.markPublished("high-performance-postgres-with-skunk-and-zio", "http://localhost:3000/article/high-performance-postgres-with-skunk-and-zio")
+          published  <- publishing.markPublished("http://localhost:3000/article/high-performance-postgres-with-skunk-and-zio")
         yield (generating, drafted, approved, publishing, published)
 
       lifecycle match
@@ -53,8 +54,27 @@ object ArticleSpec extends ZIOSpecDefault:
             approved.title.contains("High-Performance Postgres with Skunk and ZIO"),
             publishing.status == ArticleStatus.Publishing,
             published.status == ArticleStatus.Published,
-            published.slug.contains("high-performance-postgres-with-skunk-and-zio"),
             published.conduitUrl.contains("http://localhost:3000/article/high-performance-postgres-with-skunk-and-zio")
+          )
+        case Left(err) => assertTrue(err == "")
+    },
+    test("Article supports updateDraft in PendingApproval status") {
+      val authorId = UUID.randomUUID()
+      val initial  = Article.create(authorId, "Draft Topic", Set("tag"))
+      val flow = for
+        generating <- initial.startGeneration()
+        drafted    <- generating.completeGeneration("Old Title", "Old Desc", "Old Body", Set("tag"))
+        updated    <- drafted.updateDraft(title = Some("New Title"), body = Some("New Body"))
+      yield (drafted, updated)
+
+      flow match
+        case Right((drafted, updated)) =>
+          assertTrue(
+            drafted.title.contains("Old Title"),
+            updated.title.contains("New Title"),
+            updated.description.contains("Old Desc"),
+            updated.body.contains("New Body"),
+            updated.status == ArticleStatus.PendingApproval
           )
         case Left(err) => assertTrue(err == "")
     },
@@ -88,7 +108,7 @@ object ArticleSpec extends ZIOSpecDefault:
       assertTrue(
         initial.approve().isLeft,
         initial.startPublishing().isLeft,
-        initial.markPublished("slug", "url").isLeft
+        initial.markPublished("url").isLeft
       )
     },
     test("ArticleStatus parses strings with snake_case and case-insensitive matching") {

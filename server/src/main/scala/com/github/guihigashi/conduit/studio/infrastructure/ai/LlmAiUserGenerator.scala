@@ -10,21 +10,18 @@ final case class LlmAiUserGenerator(
 ) extends AiUserGenerator:
 
   override def generateProfile(
-      tags: List[Tag],
-      tone: Option[WritingTone]
+      tags: List[Tag]
   ): Task[GeneratedUserProfile] =
-    val selectedTone = tone.getOrElse(WritingTone.TechnicalDeepDive)
-    val tagsListStr  = if tags.isEmpty then "general software engineering" else tags.map(_.value).mkString(", ")
+    val tagsListStr = if tags.isEmpty then "general software engineering" else tags.map(_.value).mkString(", ")
 
     val prompt =
-      s"""Generate a realistic, unique developer persona profile with expertise in [$tagsListStr] and a $selectedTone writing tone for a technical blogging community.
+      s"""Generate a realistic, unique developer persona profile with expertise in [$tagsListStr] for a technical blogging community.
          |
          |Field requirements:
          |- suggestedUsername: Invent a distinct, realistic human full name with a space between First and Last name from diverse global cultural backgrounds. Do NOT use placeholder names.
          |- suggestedEmail: A matching lowercase email handle without spaces ending in @conduit.studio (format: firstname.lastname@conduit.studio).
          |- suggestedPassword: An initial random alphanumeric password with 8 to 12 characters.
-         |- suggestedBio: A compelling, original 1-2 sentence developer bio aligned with $selectedTone writing tone and [$tagsListStr] domain expertise.
-         |- writingTone: Exactly $selectedTone.
+         |- suggestedBio: A compelling, original 1-2 sentence developer bio aligned with [$tagsListStr] domain expertise.
          |- tags: The expertise domain tags.""".stripMargin
 
     val systemPrompt =
@@ -35,7 +32,7 @@ final case class LlmAiUserGenerator(
       .catchAll { err =>
         ZIO.logWarning(
           s"LLM generation failed (${err.getMessage}), falling back to deterministic profile synthesis."
-        ) *> fallback.generateProfile(tags, tone)
+        ) *> fallback.generateProfile(tags)
       }
 
 object LlmAiUserGenerator:

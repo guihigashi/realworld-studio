@@ -7,7 +7,7 @@ import zio.config.typesafe.TypesafeConfigProvider
 import zio.http.Client
 import zio.test.*
 import com.github.guihigashi.conduit.studio.domain.article.*
-import com.github.guihigashi.conduit.studio.domain.user.{User, UserRepository, WritingTone}
+import com.github.guihigashi.conduit.studio.domain.user.{User, UserRepository}
 import com.github.guihigashi.conduit.studio.infrastructure.conduit.LiveConduitClient
 import com.github.guihigashi.conduit.studio.infrastructure.db.{ArticleEventDispatcher, PostgresArticleRepository, PostgresUserRepository, SkunkPool}
 
@@ -40,13 +40,12 @@ object ArticlePublishingWorkerSpec extends ZIOSpecDefault:
             password = "pass",
             bio = "DevOps Lead",
             avatarUrl = None,
-            writingTone = WritingTone.Academic,
             tags = Set.empty
           )
         )
 
         // Create, generate, and approve article
-        initial        = Article.create(author.id, "Cloud-Native Microservices", Set("cloud-native", "kubernetes"))
+        initial        = Article.create(author.id, "Cloud-Native Microservices", Set("cloud-native", "kubernetes"), tone = WritingTone.Academic)
         generating     = initial.startGeneration().toOption.get
         drafted        = generating.completeGeneration(
           title = "Cloud-Native Microservices in Scala",
@@ -67,11 +66,11 @@ object ArticlePublishingWorkerSpec extends ZIOSpecDefault:
         )
 
         updatedOpt     <- articleRepo.findById(saved.id)
+        _              <- Live.live(ZIO.sleep(200.millis))
       yield assertTrue(
         event.status == ArticleStatus.Published,
         updatedOpt.isDefined,
         updatedOpt.get.status == ArticleStatus.Published,
-        updatedOpt.get.slug.isDefined,
         updatedOpt.get.conduitUrl.isDefined,
         updatedOpt.get.conduitUrl.get.contains("/article/")
       )

@@ -9,8 +9,8 @@ import zio.test.*
 import com.github.guihigashi.conduit.studio.application.article.ArticleService
 import com.github.guihigashi.conduit.studio.application.tag.TagService
 import com.github.guihigashi.conduit.studio.application.user.UserService
-import com.github.guihigashi.conduit.studio.domain.article.{Article, ArticleRepository, ArticleStatus}
-import com.github.guihigashi.conduit.studio.domain.user.{User, UserRepository, WritingTone}
+import com.github.guihigashi.conduit.studio.domain.article.{Article, ArticleRepository, ArticleStatus, WritingTone}
+import com.github.guihigashi.conduit.studio.domain.user.{User, UserRepository}
 import com.github.guihigashi.conduit.studio.infrastructure.ai.IntelligentUserGenerator
 import com.github.guihigashi.conduit.studio.infrastructure.config.AppConfig
 import com.github.guihigashi.conduit.studio.infrastructure.db.{ArticleEventDispatcher, PostgresArticleRepository, PostgresTagRepository, PostgresUserRepository, SkunkPool}
@@ -48,8 +48,7 @@ object MainEndpointSpec extends ZIOSpecDefault:
     test("POST /api/users/generate generates a persona profile directly") {
       val payload =
         """{
-          |  "tags": ["scala", "zio"],
-          |  "writingTone": "TechnicalDeepDive"
+          |  "tags": ["scala", "zio"]
           |}""".stripMargin
 
       val request = Request
@@ -63,7 +62,7 @@ object MainEndpointSpec extends ZIOSpecDefault:
         response.status == Status.Ok,
         body.contains("\"suggestedUsername\""),
         body.contains("\"suggestedEmail\""),
-        body.contains("\"writingTone\"")
+        body.contains("\"suggestedBio\"")
       )
     },
     test("POST /api/users creates a new persona in Postgres and GET /api/users retrieves it") {
@@ -73,7 +72,6 @@ object MainEndpointSpec extends ZIOSpecDefault:
           |  "username": "$uniqueUsername",
           |  "email": "$uniqueUsername@conduit.studio",
           |  "bio": "Scala 3 & Postgres enthusiast",
-          |  "writingTone": "Academic",
           |  "tags": ["scala", "type-safety"]
           |}""".stripMargin
 
@@ -106,7 +104,6 @@ object MainEndpointSpec extends ZIOSpecDefault:
             password = "password",
             bio = "Compiler specialist",
             avatarUrl = None,
-            writingTone = WritingTone.TechnicalDeepDive,
             tags = Set.empty
           )
         )
@@ -114,7 +111,9 @@ object MainEndpointSpec extends ZIOSpecDefault:
           s"""{
              |  "authorId": "${author.id}",
              |  "topic": "Type-Level Metaprogramming with Scala 3 Quotes",
-             |  "tagList": ["scala", "metaprogramming"]
+             |  "tagList": ["scala", "metaprogramming"],
+             |  "tone": "TechnicalDeepDive",
+             |  "targetWordCount": 800
              |}""".stripMargin
         enqueueReq = Request
           .post(URL.root / "api" / "articles", Body.fromString(payload))
@@ -129,8 +128,53 @@ object MainEndpointSpec extends ZIOSpecDefault:
         enqueueRes.status == Status.Ok,
         enqueueBody.contains("Type-Level Metaprogramming with Scala 3 Quotes"),
         enqueueBody.contains("QueuedGeneration"),
+        enqueueBody.contains("TechnicalDeepDive"),
+        enqueueBody.contains("800"),
         listRes.status == Status.Ok,
         listBody.contains("Type-Level Metaprogramming with Scala 3 Quotes")
+      )
+    },
+    test("PUT /api/articles/:id updates draft article content") {
+      for {
+        userRepo     <- ZIO.service[UserRepository]
+        articleRepo  <- ZIO.service[ArticleRepository]
+        uniqueUser   = s"author_${UUID.randomUUID().toString.take(8)}"
+        author       <- userRepo.save(
+          User.create(
+            username = uniqueUser,
+            email = s"$uniqueUser@conduit.studio",
+            password = "password",
+            bio = "Draft editor",
+            avatarUrl = None,
+            tags = Set.empty
+          )
+        )
+        initialArticle = Article.create(author.id, "Draft Editing Topic", Set("draft"))
+        generatingArticle = initialArticle.startGeneration().toOption.get
+        draftedArticle = generatingArticle.completeGeneration(
+          title = "Initial Draft Title",
+          description = "Initial description",
+          body = "Initial body",
+          tags = Set("draft")
+        ).toOption.get
+        savedArticle <- articleRepo.save(draftedArticle)
+
+        updatePayload =
+          """{
+            |  "title": "Refined Title by Human Editor",
+            |  "description": "Refined description",
+            |  "body": "# Refined Body Content"
+            |}""".stripMargin
+        updateReq = Request
+          .put(URL.root / "api" / "articles" / savedArticle.id.toString, Body.fromString(updatePayload))
+          .addHeader(Header.ContentType(MediaType.application.json))
+        updateRes <- runRoute(updateReq)
+        updateBody <- updateRes.body.asString
+      } yield assertTrue(
+        updateRes.status == Status.Ok,
+        updateBody.contains("Refined Title by Human Editor"),
+        updateBody.contains("# Refined Body Content"),
+        updateBody.contains("PendingApproval")
       )
     },
     test("POST /api/articles/:id/approve and /regenerate transition article state") {
@@ -145,38 +189,47 @@ object MainEndpointSpec extends ZIOSpecDefault:
             password = "password",
             bio = "Distributed systems researcher",
             avatarUrl = None,
-            writingTone = WritingTone.Academic,
             tags = Set.empty
           )
         )
-        initialArticle = Article.create(author.id, "Raft Consensus", Set("distributed-systems"))
-        generatingArticle = initialArticle.startGeneration().toOption.get
-        draftedArticle = generatingArticle.completeGeneration(
+        initialArticle1 = Article.create(author.id, "Raft Consensus", Set("distributed-systems"))
+        generatingArticle1 = initialArticle1.startGeneration().toOption.get
+        draftedArticle1 = generatingArticle1.completeGeneration(
           title = "Raft Consensus in Distributed Systems",
           description = "An analysis of leader election and log replication.",
           body = "# Raft Consensus\n\nLeader election...",
           tags = Set("distributed-systems")
         ).toOption.get
-        savedArticle <- articleRepo.save(draftedArticle)
+        savedArticle1 <- articleRepo.save(draftedArticle1)
 
-        // Approve article
+        initialArticle2 = Article.create(author.id, "Paxos Consensus", Set("distributed-systems"))
+        generatingArticle2 = initialArticle2.startGeneration().toOption.get
+        draftedArticle2 = generatingArticle2.completeGeneration(
+          title = "Paxos Consensus in Distributed Systems",
+          description = "An analysis of Paxos.",
+          body = "# Paxos Consensus\n\nPaxos...",
+          tags = Set("distributed-systems")
+        ).toOption.get
+        savedArticle2 <- articleRepo.save(draftedArticle2)
+
+        // Approve article 1
         approvePayload =
           """{
             |  "title": "Raft Consensus in Modern Distributed Systems"
             |}""".stripMargin
         approveReq = Request
-          .post(URL.root / "api" / "articles" / savedArticle.id.toString / "approve", Body.fromString(approvePayload))
+          .post(URL.root / "api" / "articles" / savedArticle1.id.toString / "approve", Body.fromString(approvePayload))
           .addHeader(Header.ContentType(MediaType.application.json))
         approveRes <- runRoute(approveReq)
         approveBody <- approveRes.body.asString
 
-        // Regenerate article
+        // Regenerate article 2
         regenPayload =
           """{
             |  "topic": "Byzantine Fault Tolerance and Raft"
             |}""".stripMargin
         regenReq = Request
-          .post(URL.root / "api" / "articles" / savedArticle.id.toString / "regenerate", Body.fromString(regenPayload))
+          .post(URL.root / "api" / "articles" / savedArticle2.id.toString / "regenerate", Body.fromString(regenPayload))
           .addHeader(Header.ContentType(MediaType.application.json))
         regenRes <- runRoute(regenReq)
         regenBody <- regenRes.body.asString
@@ -218,6 +271,5 @@ object MainEndpointSpec extends ZIOSpecDefault:
     PostgresUserRepository.layer,
     PostgresArticleRepository.layer,
     ArticleEventDispatcher.layer,
-    SkunkPool.live,
-    Scope.default
+    SkunkPool.live
   ) @@ TestAspect.sequential
