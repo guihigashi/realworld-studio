@@ -41,32 +41,32 @@ A phased, commit-by-commit roadmap structured into modular vertical slices:
 
 ---
 
-### Milestone 2: Article Generation & Publishing Subdomain (Vertical Slice) `[NEXT UP]`
+### Milestone 2: Article Generation & Publishing Subdomain (Vertical Slice) `[COMPLETED]`
 * **Commit 6: `feat(domain): define article aggregate, commands, and typed state machine`**
-  - [ ] `ArticleStatus` typed state machine: `QueuedGeneration` $\rightarrow$ `Generating` $\rightarrow$ `PendingApproval` $\rightarrow$ `Approved` $\rightarrow$ `Publishing` $\rightarrow$ `Published` / `Failed`.
-  - [ ] `Article` aggregate root (title, slug, body, description, tagList, authorId, status, conduitUrl).
-  - [ ] `ArticleRepository` domain port.
+  - [x] `ArticleStatus` typed state machine: `QueuedGeneration` $\rightarrow$ `Generating` $\rightarrow$ `PendingApproval` $\rightarrow$ `Approved` $\rightarrow$ `Publishing` $\rightarrow$ `Published` / `Failed`.
+  - [x] `Article` aggregate root (title, slug, body, description, tagList, authorId, status, conduitUrl).
+  - [x] `ArticleRepository` domain port.
 * **Commit 7: `feat(db): add articles schema and skunk atomic queue repository`**
-  - [ ] Flyway DDL migration `V2__create_articles_and_events.sql` with `articles` table and `article_events` channel.
-  - [ ] `PostgresArticleRepository` with `FOR UPDATE SKIP LOCKED` for atomic job claiming.
-  - [ ] PostgreSQL `LISTEN/NOTIFY` dispatcher using Skunk channels fanning out to `ZIO.Hub`.
+  - [x] Flyway DDL migration `V2__create_articles_and_events.sql` with `articles` table and `article_events` channel.
+  - [x] `PostgresArticleRepository` with `FOR UPDATE SKIP LOCKED` for atomic job claiming.
+  - [x] PostgreSQL `LISTEN/NOTIFY` dispatcher using Skunk channels fanning out to `ZIO.Hub`.
 * **Commit 8: `feat(worker): implement llm article generator and background worker fibers`**
-  - [ ] Markdown article content synthesis via `LlamaCppClient` using persona domain tags and tone.
-  - [ ] Background generation worker fiber: claims `QueuedGeneration` $\rightarrow$ generates draft $\rightarrow$ transitions to `PendingApproval`.
-  - [ ] ZIO concurrency safeguard with `ZIO.Semaphore` limiting concurrent LLM inference slots.
+  - [x] Markdown article content synthesis via `LlamaCppClient` using persona domain tags and tone.
+  - [x] Background generation worker fiber: claims `QueuedGeneration` $\rightarrow$ generates draft $\rightarrow$ transitions to `PendingApproval`.
+  - [x] ZIO concurrency safeguard with `ZIO.Semaphore` limiting concurrent LLM inference slots.
 * **Commit 9: `feat(publisher): implement realworld conduit api client and publishing worker`**
-  - [ ] ZIO HTTP client for Conduit API: authenticate persona $\rightarrow$ `POST /api/articles` with Bearer token.
-  - [ ] Publishing worker fiber: claims `Approved` articles $\rightarrow$ posts to Conduit $\rightarrow$ records external URL $\rightarrow$ marks `Published`.
+  - [x] ZIO HTTP client for Conduit API: authenticate persona $\rightarrow$ `POST /api/articles` with Bearer token.
+  - [x] Publishing worker fiber: claims `Approved` articles $\rightarrow$ posts to Conduit $\rightarrow$ records external URL $\rightarrow$ marks `Published`.
 * **Commit 10: `feat(api): expose article management endpoints and real-time sse stream`**
-  - [ ] Declarative endpoints: `POST /api/articles` (enqueue), `GET /api/articles` (filter by status/author), `POST /api/articles/:id/approve`, `POST /api/articles/:id/regenerate`.
-  - [ ] `GET /api/events` streaming Server-Sent Events (SSE) from `ZIO.Hub` for real-time frontend synchronization.
-  - [ ] Comprehensive integration test suite for the complete article lifecycle.
+  - [x] Declarative endpoints: `POST /api/articles` (enqueue), `GET /api/articles` (filter by status/author), `POST /api/articles/:id/approve`, `POST /api/articles/:id/regenerate`.
+  - [x] `GET /api/events` streaming Server-Sent Events (SSE) from `ZIO.Hub` for real-time frontend synchronization.
+  - [x] Comprehensive integration test suite for the complete article lifecycle.
 
 ---
 
 ## 🎨 Track 2: UI (React 19 + TypeScript + Vite + MUI)
 
-### Milestone 3: App Shell & Routing
+### Milestone 3: App Shell & Routing `[NEXT UP]`
 * **Commit 11: `feat(ui): scaffold application shell, navigation, and routing`**
   - [ ] React Router configuration: Personas Hub, Article Studio, Approval Board, Publishing Audit.
   - [ ] Responsive navigation drawer and system status indicators.
