@@ -1,6 +1,12 @@
 {
   "version": 1,
   "skills": {
+    "redux-toolkit": {
+      "source": "mindrally/skills",
+      "sourceType": "github",
+      "skillPath": "redux-toolkit/SKILL.md",
+      "computedHash": "7058695e76e6499ef9fb968a16c905bcc3e8399e50bb1826599492d240cd84e9"
+    },
     "zio-http-knowledge": {
       "source": "zio/zio-skills",
       "sourceType": "github",

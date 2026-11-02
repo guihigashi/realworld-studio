@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router"
-import { useCallback, useEffect, useState, useTransition } from "react"
+import { useEffect, useMemo, useState } from "react"
 import {
   Alert,
   Box,
@@ -13,16 +13,10 @@ import {
   TextField,
   Typography,
 } from "@mui/material"
-import {
-  CheckCircleOutlined,
-  ErrorOutlined,
-  Link,
-  OpenInNew,
-  Refresh,
-  Replay,
-} from "@mui/icons-material"
+import { CheckCircleOutlined, ErrorOutlined, History, Link, OpenInNew, Refresh, Replay } from "@mui/icons-material"
 import { useEvents } from "@/hooks/useEvents.ts"
-import { api } from "@/api/client.ts"
+import { api } from "@/state/api.ts"
+import { getErrorMessage } from "@/state/helpers.ts"
 import { StatusChip } from "@/components/StatusChip.tsx"
 import { ToneChip } from "@/components/ToneChip.tsx"
 import { ArticleStatuses } from "@/lib/constants.ts"
@@ -32,76 +26,37 @@ export const Route = createFileRoute("/audit")({
 })
 
 function RouteComponent() {
-  const [articles, setArticles] = useState<Article[]>([])
-  const [users, setUsers] = useState<Record<string, User>>({})
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const {
+    data: rawArticles = [],
+    isLoading: articlesLoading,
+    error: articlesError,
+    refetch: loadArticles,
+  } = api.useGetArticlesQuery()
+  const { data: rawUsers = [], isLoading: usersLoading, error: usersError } = api.useGetUsersQuery()
+  const [regenerateArticleMutation, { isLoading: retryLoading }] = api.useRegenerateArticleMutation()
+
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [authorFilter, setAuthorFilter] = useState<string>("all")
-  const [, startTransition] = useTransition()
+  const [actionError, setActionError] = useState<string | null>(null)
   const { addListener } = useEvents()
 
-  const loadData = useCallback(async () => {
-    try {
-      const [fetchedArticles, fetchedUsers] = await Promise.all([api.getArticles(), api.getUsers()])
+  const users = useMemo(() => {
+    return rawUsers.reduce<Record<string, User>>((acc, u) => {
+      acc[u.id] = u
+      return acc
+    }, {})
+  }, [rawUsers])
 
-      const userMap = fetchedUsers.reduce<Record<string, User>>((acc, u) => {
-        acc[u.id] = u
-        return acc
-      }, {})
-
-      const sorted = [...fetchedArticles].sort(
-        (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
-      )
-
-      startTransition(() => {
-        setArticles(sorted)
-        setUsers(userMap)
-      })
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to load audit history")
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    let ignore = false
-    void (async () => {
-      try {
-        const [fetchedArticles, fetchedUsers] = await Promise.all([api.getArticles(), api.getUsers()])
-        if (!ignore) {
-          const userMap = fetchedUsers.reduce<Record<string, User>>((acc, u) => {
-            acc[u.id] = u
-            return acc
-          }, {})
-          const sorted = [...fetchedArticles].sort(
-            (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
-          )
-          startTransition(() => {
-            setArticles(sorted)
-            setUsers(userMap)
-            setLoading(false)
-          })
-        }
-      } catch (err: unknown) {
-        if (!ignore) {
-          setError(err instanceof Error ? err.message : "Failed to load audit history")
-          setLoading(false)
-        }
-      }
-    })()
-    return () => {
-      ignore = true
-    }
-  }, [])
+  const articles = useMemo(() => {
+    return [...rawArticles].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+  }, [rawArticles])
 
   useEffect(() => {
     const unsubscribe = addListener(() => {
-      loadData()
+      void loadArticles()
     })
     return unsubscribe
-  }, [addListener, loadData])
+  }, [addListener, loadArticles])
 
   const filteredArticles = articles.filter((a) => {
     if (statusFilter !== "all" && a.status !== statusFilter) return false
@@ -113,13 +68,19 @@ function RouteComponent() {
   const failedCount = articles.filter((a) => a.status === "Failed").length
 
   const handleRetry = async (articleId: string) => {
+    setActionError(null)
     try {
-      await api.regenerateArticle(articleId, {})
-      await loadData()
+      await regenerateArticleMutation({ id: articleId }).unwrap()
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to retry article")
+      setActionError(getErrorMessage(err, "Failed to retry article"))
     }
   }
+
+  const loading = articlesLoading || usersLoading
+  const error =
+    actionError ||
+    (articlesError ? getErrorMessage(articlesError, "Failed to load audit history") : null) ||
+    (usersError ? getErrorMessage(usersError, "Failed to load users") : null)
 
   if (loading) {
     return (
@@ -150,13 +111,13 @@ function RouteComponent() {
           </Typography>
         </Box>
 
-        <Button variant="outlined" startIcon={<Refresh />} onClick={loadData} disabled={loading}>
+        <Button variant="outlined" startIcon={<Refresh />} onClick={() => void loadArticles()} disabled={loading}>
           Refresh
         </Button>
       </Stack>
 
       {error && (
-        <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(null)}>
+        <Alert severity="error" sx={{ mb: 3 }} onClose={() => setActionError(null)}>
           {error}
         </Alert>
       )}
@@ -171,19 +132,22 @@ function RouteComponent() {
         }}
       >
         <Card sx={{ p: 2 }}>
-          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
-            TOTAL ARTICLES
-          </Typography>
+          <Stack direction="row" spacing={1.5} sx={{ alignItems: "center" }}>
+            <History color="primary" />
+            <Typography variant="subtitle2" color="text.secondary">
+              Total Managed
+            </Typography>
+          </Stack>
           <Typography variant="h4" sx={{ fontWeight: 700, mt: 0.5 }}>
             {articles.length}
           </Typography>
         </Card>
 
-        <Card sx={{ p: 2, borderLeft: "4px solid #10b981" }}>
-          <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
-            <CheckCircleOutlined color="success" fontSize="small" />
-            <Typography variant="caption" color="success.light" sx={{ fontWeight: 600 }}>
-              PUBLISHED TO CONDUIT
+        <Card sx={{ p: 2 }}>
+          <Stack direction="row" spacing={1.5} sx={{ alignItems: "center" }}>
+            <CheckCircleOutlined color="success" />
+            <Typography variant="subtitle2" color="text.secondary">
+              Published on Conduit
             </Typography>
           </Stack>
           <Typography variant="h4" sx={{ fontWeight: 700, mt: 0.5, color: "#10b981" }}>
@@ -191,11 +155,11 @@ function RouteComponent() {
           </Typography>
         </Card>
 
-        <Card sx={{ p: 2, borderLeft: "4px solid #ef4444" }}>
-          <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
-            <ErrorOutlined color="error" fontSize="small" />
-            <Typography variant="caption" color="error.light" sx={{ fontWeight: 600 }}>
-              FAILED JOBS
+        <Card sx={{ p: 2 }}>
+          <Stack direction="row" spacing={1.5} sx={{ alignItems: "center" }}>
+            <ErrorOutlined color="error" />
+            <Typography variant="subtitle2" color="text.secondary">
+              Failed / Retried
             </Typography>
           </Stack>
           <Typography variant="h4" sx={{ fontWeight: 700, mt: 0.5, color: "#ef4444" }}>
@@ -299,7 +263,8 @@ function RouteComponent() {
                           color="error"
                           size="small"
                           startIcon={<Replay />}
-                          onClick={() => handleRetry(article.id)}
+                          onClick={() => void handleRetry(article.id)}
+                          disabled={retryLoading}
                         >
                           Retry Job
                         </Button>

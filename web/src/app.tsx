@@ -3,6 +3,8 @@ import { createRouter, RouterProvider } from "@tanstack/react-router"
 import { routeTree } from "@/routeTree.gen.ts"
 import { theme } from "@/theme/theme.ts"
 import { EventsProvider } from "@/hooks/EventsContext.tsx"
+import { Provider } from "react-redux"
+import { store } from "@/state/store.ts"
 
 const router = createRouter({ routeTree })
 
@@ -12,13 +14,15 @@ declare module "@tanstack/react-router" {
   }
 }
 
-export default function App() {
+export function App() {
   return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <EventsProvider>
-        <RouterProvider router={router} />
-      </EventsProvider>
-    </ThemeProvider>
+    <Provider store={store}>
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <EventsProvider>
+          <RouterProvider router={router} />
+        </EventsProvider>
+      </ThemeProvider>
+    </Provider>
   )
 }

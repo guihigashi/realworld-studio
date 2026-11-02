@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router"
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import {
   Alert,
   Autocomplete,
@@ -20,7 +20,8 @@ import {
   Send,
   Speed,
 } from "@mui/icons-material"
-import { api } from "@/api/client.ts"
+import { api } from "@/state/api.ts"
+import { getErrorMessage } from "@/state/helpers.ts"
 import { ToneChip } from "@/components/ToneChip.tsx"
 import { WritingTones } from "@/lib/constants.ts"
 
@@ -30,78 +31,51 @@ export const Route = createFileRoute("/studio")({
 
 function RouteComponent() {
   const navigate = useNavigate()
-  const [users, setUsers] = useState<User[]>([])
-  const [loading, setLoading] = useState(true)
-  const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const { data: users = [], isLoading: usersLoading, error: usersError } = api.useGetUsersQuery()
+  const [enqueueArticleMutation, { isLoading: submitting }] = api.useEnqueueArticleMutation()
+
+  const [formError, setFormError] = useState<string | null>(null)
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
 
   // Form State
-  const [authorId, setAuthorId] = useState<string>("")
+  const [selectedAuthorId, setSelectedAuthorId] = useState<string>("")
   const [topic, setTopic] = useState("")
-  const [selectedTags, setSelectedTags] = useState<string[]>([])
+  const [customTags, setCustomTags] = useState<string[] | null>(null)
   const [tone, setTone] = useState<WritingTone>("TechnicalDeepDive")
   const [targetWordCount, setTargetWordCount] = useState<number>(800)
 
-  useEffect(() => {
-    let ignore = false
-    void (async () => {
-      try {
-        const fetchedUsers = await api.getUsers()
-        if (!ignore) {
-          setUsers(fetchedUsers)
-          if (fetchedUsers.length > 0) {
-            const firstUser = fetchedUsers[0]
-            setAuthorId(firstUser.id)
-            setSelectedTags(firstUser.tags.map((t) => t.name))
-          }
-          setLoading(false)
-        }
-      } catch (err: unknown) {
-        if (!ignore) {
-          setError(err instanceof Error ? err.message : "Failed to load personas")
-          setLoading(false)
-        }
-      }
-    })()
-    return () => {
-      ignore = true
-    }
-  }, [])
-
+  const authorId = selectedAuthorId || users[0]?.id || ""
   const selectedUser = users.find((u) => u.id === authorId)
+  const selectedTags = customTags ?? selectedUser?.tags.map((t) => t.name) ?? []
 
   const handleAuthorChange = (newAuthorId: string) => {
-    setAuthorId(newAuthorId)
+    setSelectedAuthorId(newAuthorId)
     const user = users.find((u) => u.id === newAuthorId)
-    if (user) {
-      setSelectedTags(user.tags.map((t) => t.name))
-    }
+    setCustomTags(user ? user.tags.map((t) => t.name) : [])
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!authorId) {
-      setError("Please select an author persona")
+      setFormError("Please select an author persona")
       return
     }
     if (!topic.trim()) {
-      setError("Please enter a topic or prompt for the article")
+      setFormError("Please enter a topic or prompt for the article")
       return
     }
 
-    setSubmitting(true)
-    setError(null)
+    setFormError(null)
     setSuccessMsg(null)
 
     try {
-      const article = await api.enqueueArticle({
+      const article = await enqueueArticleMutation({
         authorId,
         topic: topic.trim(),
         tagList: selectedTags,
         tone,
         targetWordCount: targetWordCount > 0 ? targetWordCount : undefined,
-      })
+      }).unwrap()
 
       setSuccessMsg(`Article "${article.topic}" queued successfully! Transitioning to generation...`)
       setTopic("")
@@ -111,11 +85,12 @@ function RouteComponent() {
         navigate({ to: "/approval" })
       }, 1500)
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to enqueue article generation")
-    } finally {
-      setSubmitting(false)
+      setFormError(getErrorMessage(err, "Failed to enqueue article generation"))
     }
   }
+
+  const loading = usersLoading
+  const error = formError || (usersError ? getErrorMessage(usersError, "Failed to load personas") : null)
 
   if (loading) {
     return (
@@ -138,7 +113,7 @@ function RouteComponent() {
       </Box>
 
       {error && (
-        <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(null)}>
+        <Alert severity="error" sx={{ mb: 3 }} onClose={() => setFormError(null)}>
           {error}
         </Alert>
       )}
@@ -240,7 +215,7 @@ function RouteComponent() {
                   freeSolo
                   options={selectedUser ? selectedUser.tags.map((t) => t.name) : []}
                   value={selectedTags}
-                  onChange={(_, newValue) => setSelectedTags(newValue)}
+                  onChange={(_, newValue) => setCustomTags(newValue)}
                   renderInput={(params) => (
                     <TextField
                       {...params}

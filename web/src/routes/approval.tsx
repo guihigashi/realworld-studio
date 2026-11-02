@@ -1,12 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router"
-import { useCallback, useEffect, useState, useTransition } from "react"
+import { useEffect, useMemo, useState } from "react"
 import {
   Alert,
-  Autocomplete,
   Box,
   Button,
   Card,
-  CardContent,
   Chip,
   CircularProgress,
   Dialog,
@@ -17,38 +15,34 @@ import {
   Snackbar,
   Stack,
   TextField,
-  Tooltip,
   Typography,
 } from "@mui/material"
-import { CheckCircle, RateReview, Refresh, Replay, Save } from "@mui/icons-material"
+import { RateReview, Refresh, Replay } from "@mui/icons-material"
 import { PaperCard } from "@/components/PaperCard.tsx"
-import { StatusChip } from "@/components/StatusChip.tsx"
 import { ToneChip } from "@/components/ToneChip.tsx"
 import { useEvents } from "@/hooks/useEvents.ts"
-import { api } from "@/api/client.ts"
-import { MarkdownEditor } from "@/components/MarkdownEditor.tsx"
+import { api } from "@/state/api.ts"
+import { getErrorMessage } from "@/state/helpers.ts"
 import { WritingTones } from "@/lib/constants.ts"
+import { ArticleEditor } from "@/components/article-editor.tsx"
 
 export const Route = createFileRoute("/approval")({
   component: RouteComponent,
 })
 
 function RouteComponent() {
-  const [articles, setArticles] = useState<Article[]>([])
-  const [users, setUsers] = useState<Record<string, User>>({})
-  const [selectedArticleId, setSelectedArticleId] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [actionLoading, setActionLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [toastMessage, setToastMessage] = useState<string | null>(null)
-  const [, startTransition] = useTransition()
+  const {
+    data: rawArticles = [],
+    isLoading: articlesLoading,
+    error: articlesError,
+    refetch: fetchArticles,
+  } = api.useGetArticlesQuery()
+  const { data: rawUsers = [], isLoading: usersLoading, error: usersError } = api.useGetUsersQuery()
+  const [regenerateArticleMutation, { isLoading: regenLoading }] = api.useRegenerateArticleMutation()
 
-  // Active Draft Form
-  const [draftTitle, setDraftTitle] = useState("")
-  const [draftDescription, setDraftDescription] = useState("")
-  const [draftBody, setDraftBody] = useState("")
-  const [draftTags, setDraftTags] = useState<string[]>([])
-  const [isDirty, setIsDirty] = useState(false)
+  const [selectedArticleId, setSelectedArticleId] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
+  const [toastMessage, setToastMessage] = useState<string | null>(null)
 
   // Regenerate Dialog
   const [regenOpen, setRegenOpen] = useState(false)
@@ -58,93 +52,30 @@ function RouteComponent() {
 
   const { addListener } = useEvents()
 
-  const fetchArticles = useCallback(async () => {
-    try {
-      const [fetchedArticles, fetchedUsers] = await Promise.all([api.getArticles(), api.getUsers()])
+  const users = useMemo(() => {
+    return rawUsers.reduce<Record<string, User>>((acc, u) => {
+      acc[u.id] = u
+      return acc
+    }, {})
+  }, [rawUsers])
 
-      const userMap = fetchedUsers.reduce<Record<string, User>>((acc, u) => {
-        acc[u.id] = u
-        return acc
-      }, {})
-
-      const sorted = [...fetchedArticles].sort((a, b) => {
-        const order: Record<string, number> = {
-          PendingApproval: 0,
-          Generating: 1,
-          QueuedGeneration: 2,
-          Approved: 3,
-          Publishing: 4,
-          Published: 5,
-          Failed: 6,
-        }
-        return (order[a.status] ?? 99) - (order[b.status] ?? 99)
-      })
-
-      startTransition(() => {
-        setArticles(sorted)
-        setUsers(userMap)
-      })
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to fetch articles")
-    } finally {
-      setLoading(false)
+  const articles = useMemo(() => {
+    const order: Record<string, number> = {
+      PendingApproval: 0,
+      Generating: 1,
+      QueuedGeneration: 2,
+      Approved: 3,
+      Publishing: 4,
+      Published: 5,
+      Failed: 6,
     }
-  }, [])
-
-  useEffect(() => {
-    let ignore = false
-    void (async () => {
-      try {
-        const [fetchedArticles, fetchedUsers] = await Promise.all([api.getArticles(), api.getUsers()])
-        if (!ignore) {
-          const userMap = fetchedUsers.reduce<Record<string, User>>((acc, u) => {
-            acc[u.id] = u
-            return acc
-          }, {})
-
-          const sorted = [...fetchedArticles].sort((a, b) => {
-            const order: Record<string, number> = {
-              PendingApproval: 0,
-              Generating: 1,
-              QueuedGeneration: 2,
-              Approved: 3,
-              Publishing: 4,
-              Published: 5,
-              Failed: 6,
-            }
-            return (order[a.status] ?? 99) - (order[b.status] ?? 99)
-          })
-
-          startTransition(() => {
-            setArticles(sorted)
-            setUsers(userMap)
-            setLoading(false)
-            const first = sorted.find((a) => a.status === "PendingApproval") || sorted[0]
-            if (first) {
-              setSelectedArticleId(first.id)
-              setDraftTitle(first.title || first.topic || "")
-              setDraftDescription(first.description || "")
-              setDraftBody(first.body || "")
-              setDraftTags(first.tagList || [])
-            }
-          })
-        }
-      } catch (err: unknown) {
-        if (!ignore) {
-          setError(err instanceof Error ? err.message : "Failed to fetch articles")
-          setLoading(false)
-        }
-      }
-    })()
-    return () => {
-      ignore = true
-    }
-  }, [])
+    return [...rawArticles].sort((a, b) => (order[a.status] ?? 99) - (order[b.status] ?? 99))
+  }, [rawArticles])
 
   // Subscribe to real-time events from SSE
   useEffect(() => {
     const remove = addListener((event) => {
-      fetchArticles()
+      void fetchArticles()
       if (event.status === "PendingApproval") {
         setToastMessage("Article draft is ready for review!")
       } else if (event.status === "Published") {
@@ -160,57 +91,6 @@ function RouteComponent() {
     articles[0] ||
     null
 
-  const selectArticle = (a: Article) => {
-    setSelectedArticleId(a.id)
-    setDraftTitle(a.title || a.topic || "")
-    setDraftDescription(a.description || "")
-    setDraftBody(a.body || "")
-    setDraftTags(a.tagList || [])
-    setIsDirty(false)
-  }
-
-  const handleSaveDraft = async () => {
-    if (!activeArticle) return
-    setActionLoading(true)
-    setError(null)
-    try {
-      const updated = await api.updateArticle(activeArticle.id, {
-        title: draftTitle,
-        description: draftDescription,
-        body: draftBody,
-        tagList: draftTags,
-      })
-      setIsDirty(false)
-      setToastMessage("Draft changes saved successfully!")
-      setArticles((prev) => prev.map((a) => (a.id === updated.id ? updated : a)))
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to save draft")
-    } finally {
-      setActionLoading(false)
-    }
-  }
-
-  const handleApprove = async () => {
-    if (!activeArticle) return
-    setActionLoading(true)
-    setError(null)
-    try {
-      const updated = await api.approveArticle(activeArticle.id, {
-        title: draftTitle || undefined,
-        description: draftDescription || undefined,
-        body: draftBody || undefined,
-        tagList: draftTags.length > 0 ? draftTags : undefined,
-      })
-      setIsDirty(false)
-      setToastMessage("Article approved! Background publishing worker triggered.")
-      setArticles((prev) => prev.map((a) => (a.id === updated.id ? updated : a)))
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to approve article")
-    } finally {
-      setActionLoading(false)
-    }
-  }
-
   const handleOpenRegenerate = () => {
     if (!activeArticle) return
     setRegenTopic(activeArticle.topic)
@@ -221,23 +101,28 @@ function RouteComponent() {
 
   const handleConfirmRegenerate = async () => {
     if (!activeArticle) return
-    setActionLoading(true)
-    setError(null)
+    setActionError(null)
     try {
-      const updated = await api.regenerateArticle(activeArticle.id, {
-        topic: regenTopic,
-        tone: regenTone,
-        targetWordCount: regenWordCount,
-      })
+      await regenerateArticleMutation({
+        id: activeArticle.id,
+        cmd: {
+          topic: regenTopic,
+          tone: regenTone,
+          targetWordCount: regenWordCount,
+        },
+      }).unwrap()
       setRegenOpen(false)
       setToastMessage("Article sent for re-generation!")
-      setArticles((prev) => prev.map((a) => (a.id === updated.id ? updated : a)))
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to trigger re-generation")
-    } finally {
-      setActionLoading(false)
+      setActionError(getErrorMessage(err, "Failed to trigger re-generation"))
     }
   }
+
+  const loading = articlesLoading || usersLoading
+  const error =
+    actionError ||
+    (articlesError ? getErrorMessage(articlesError, "Failed to fetch articles") : null) ||
+    (usersError ? getErrorMessage(usersError, "Failed to fetch users") : null)
 
   if (loading) {
     return (
@@ -280,13 +165,13 @@ function RouteComponent() {
           </Typography>
         </Box>
 
-        <Button variant="outlined" startIcon={<Refresh />} onClick={fetchArticles} disabled={loading}>
+        <Button variant="outlined" startIcon={<Refresh />} onClick={() => void fetchArticles()} disabled={loading}>
           Refresh Queue
         </Button>
       </Stack>
 
       {error && (
-        <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(null)}>
+        <Alert severity="error" sx={{ mb: 3 }} onClose={() => setActionError(null)}>
           {error}
         </Alert>
       )}
@@ -328,7 +213,7 @@ function RouteComponent() {
                       item={item}
                       author={author}
                       isSelected={isSelected}
-                      onClick={() => selectArticle(item)}
+                      onClick={() => setSelectedArticleId(item.id)}
                     />
                   )
                 })}
@@ -338,143 +223,13 @@ function RouteComponent() {
 
           {/* Right Column: Split-Pane Editor & Actions */}
           {activeArticle ? (
-            <Card sx={{ p: { xs: 2, sm: 3 } }}>
-              <CardContent sx={{ p: "0 !important" }}>
-                {/* Article Header & Action Buttons */}
-                <Stack
-                  direction={{ xs: "column", md: "row" }}
-                  spacing={2}
-                  sx={{
-                    justifyContent: "space-between",
-                    alignItems: { xs: "flex-start", md: "center" },
-                    mb: 2.5,
-                  }}
-                >
-                  <Stack direction="row" spacing={1.5} sx={{ alignItems: "center", flexWrap: "wrap" }}>
-                    <StatusChip status={activeArticle.status} />
-                    <ToneChip tone={activeArticle.tone} />
-                    {users[activeArticle.authorId] && (
-                      <Typography variant="caption" sx={{ color: "text.secondary", fontWeight: 600 }}>
-                        by @{users[activeArticle.authorId].username}
-                      </Typography>
-                    )}
-                  </Stack>
-
-                  <Stack direction="row" spacing={1.5} sx={{ flexWrap: "wrap" }}>
-                    <Tooltip title="Regenerate with revised topic, tone, or word count">
-                      <Button
-                        variant="outlined"
-                        color="inherit"
-                        size="small"
-                        startIcon={<Replay />}
-                        onClick={handleOpenRegenerate}
-                        disabled={actionLoading || activeArticle.status === "Generating"}
-                      >
-                        Regenerate
-                      </Button>
-                    </Tooltip>
-
-                    <Button
-                      variant="outlined"
-                      size="small"
-                      startIcon={<Save />}
-                      onClick={handleSaveDraft}
-                      disabled={actionLoading || !isDirty}
-                    >
-                      Save Draft
-                    </Button>
-
-                    <Button
-                      variant="contained"
-                      color="primary"
-                      size="small"
-                      startIcon={<CheckCircle />}
-                      onClick={handleApprove}
-                      disabled={actionLoading || activeArticle.status !== "PendingApproval"}
-                    >
-                      Approve & Publish
-                    </Button>
-                  </Stack>
-                </Stack>
-
-                {/* Status-specific warning or notice */}
-                {activeArticle.status === "Generating" && (
-                  <Alert severity="warning" sx={{ mb: 2.5 }}>
-                    This article is currently being generated by the LLM background worker. Content will update
-                    automatically once completed.
-                  </Alert>
-                )}
-                {activeArticle.status === "Published" && (
-                  <Alert severity="success" sx={{ mb: 2.5 }}>
-                    Published to RealWorld Conduit! Slug / External URL:{" "}
-                    {activeArticle.conduitUrl || "Available in Conduit blog"}
-                  </Alert>
-                )}
-                {activeArticle.status === "Failed" && (
-                  <Alert severity="error" sx={{ mb: 2.5 }}>
-                    Generation / publishing failed:{" "}
-                    {activeArticle.errorMessage || "Unknown error. Click Regenerate to retry."}
-                  </Alert>
-                )}
-
-                {/* Editable Metadata Fields */}
-                <Stack spacing={2} sx={{ mb: 2.5 }}>
-                  <TextField
-                    label="Article Title"
-                    fullWidth
-                    size="small"
-                    value={draftTitle}
-                    onChange={(e) => {
-                      setDraftTitle(e.target.value)
-                      setIsDirty(true)
-                    }}
-                    placeholder="Enter article title..."
-                  />
-
-                  <TextField
-                    label="Lead Description (1-2 sentences)"
-                    fullWidth
-                    size="small"
-                    multiline
-                    rows={2}
-                    value={draftDescription}
-                    onChange={(e) => {
-                      setDraftDescription(e.target.value)
-                      setIsDirty(true)
-                    }}
-                    placeholder="Short description summary for search and feed cards..."
-                  />
-
-                  <Autocomplete
-                    multiple
-                    freeSolo
-                    options={activeArticle.tagList}
-                    value={draftTags}
-                    onChange={(_, newVal) => {
-                      setDraftTags(newVal)
-                      setIsDirty(true)
-                    }}
-                    renderInput={(params) => (
-                      <TextField {...params} size="small" label="Article Tags" placeholder="Tags..." />
-                    )}
-                  />
-                </Stack>
-
-                {/* Split Pane Markdown Editor */}
-                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
-                  Markdown Article Content
-                </Typography>
-                <MarkdownEditor
-                  value={draftBody}
-                  onChange={(val) => {
-                    setDraftBody(val)
-                    setIsDirty(true)
-                  }}
-                  disabled={activeArticle.status === "Generating"}
-                  minHeight={450}
-                />
-              </CardContent>
-            </Card>
+            <ArticleEditor
+              key={`${activeArticle.id}-${activeArticle.status}-${activeArticle.updatedAt}`}
+              article={activeArticle}
+              users={users}
+              onRegenerate={handleOpenRegenerate}
+              setToastMessage={setToastMessage}
+            />
           ) : null}
         </Box>
       )}
@@ -518,14 +273,14 @@ function RouteComponent() {
           </Stack>
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
-          <Button onClick={() => setRegenOpen(false)} disabled={actionLoading}>
+          <Button onClick={() => setRegenOpen(false)} disabled={regenLoading}>
             Cancel
           </Button>
           <Button
             variant="contained"
             onClick={handleConfirmRegenerate}
-            disabled={actionLoading}
-            startIcon={actionLoading ? <CircularProgress size={16} /> : <Replay />}
+            disabled={regenLoading}
+            startIcon={regenLoading ? <CircularProgress size={16} /> : <Replay />}
           >
             Regenerate Draft
           </Button>
