@@ -1,6 +1,12 @@
 {
   "version": 1,
   "skills": {
+    "react-hook-form": {
+      "source": "supabase/supabase",
+      "sourceType": "github",
+      "skillPath": ".agents/skills/react-hook-form/SKILL.md",
+      "computedHash": "8a6efeae9ff549519c8902b8d409b01bec2ec449d971ea0f37b57ba1d0a9c6c7"
+    },
     "redux-toolkit": {
       "source": "mindrally/skills",
       "sourceType": "github",

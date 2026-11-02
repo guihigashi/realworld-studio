@@ -1,5 +1,6 @@
 package com.github.guihigashi.conduit.studio.presentation.http.user
 
+import java.util.UUID
 import zio.http.*
 import zio.http.codec.*
 import zio.http.endpoint.*
@@ -18,6 +19,17 @@ object UserEndpoints:
       .out[User]
       .outError[String](Status.BadRequest)
 
+  val updateUser =
+    Endpoint(Method.PUT / "api" / "users" / uuid("id"))
+      .in[UpdateUserCommand]
+      .out[User]
+      .outError[String](Status.BadRequest)
+
+  val deleteUser =
+    Endpoint(Method.DELETE / "api" / "users" / uuid("id"))
+      .out[Unit]
+      .outError[String](Status.NotFound)
+
   val listUsers =
     Endpoint(Method.GET / "api" / "users")
       .out[List[User]]
@@ -27,4 +39,4 @@ object UserEndpoints:
       .out[User]
       .outError[String](Status.NotFound)
 
-  val all = List(generateProfile, createUser, listUsers, getUser)
+  val all = List(generateProfile, createUser, updateUser, deleteUser, listUsers, getUser)

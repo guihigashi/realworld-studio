@@ -7,24 +7,17 @@ import {
   Card,
   Chip,
   CircularProgress,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  MenuItem,
   Snackbar,
   Stack,
-  TextField,
   Typography,
 } from "@mui/material"
-import { RateReview, Refresh, Replay } from "@mui/icons-material"
+import { RateReview, Refresh } from "@mui/icons-material"
 import { PaperCard } from "@/components/PaperCard.tsx"
-import { ToneChip } from "@/components/ToneChip.tsx"
 import { useEvents } from "@/hooks/useEvents.ts"
 import { api } from "@/state/api.ts"
 import { getErrorMessage } from "@/state/helpers.ts"
-import { WritingTones } from "@/lib/constants.ts"
 import { ArticleEditor } from "@/components/article-editor.tsx"
+import { RegenerateDialog } from "@/components/RegenerateDialog.tsx"
 
 export const Route = createFileRoute("/approval")({
   component: RouteComponent,
@@ -38,17 +31,11 @@ function RouteComponent() {
     refetch: fetchArticles,
   } = api.useGetArticlesQuery()
   const { data: rawUsers = [], isLoading: usersLoading, error: usersError } = api.useGetUsersQuery()
-  const [regenerateArticleMutation, { isLoading: regenLoading }] = api.useRegenerateArticleMutation()
 
   const [selectedArticleId, setSelectedArticleId] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [toastMessage, setToastMessage] = useState<string | null>(null)
-
-  // Regenerate Dialog
   const [regenOpen, setRegenOpen] = useState(false)
-  const [regenTopic, setRegenTopic] = useState("")
-  const [regenTone, setRegenTone] = useState<WritingTone>("TechnicalDeepDive")
-  const [regenWordCount, setRegenWordCount] = useState<number>(800)
 
   const { addListener } = useEvents()
 
@@ -90,33 +77,6 @@ function RouteComponent() {
     articles.find((a) => a.status === "PendingApproval") ||
     articles[0] ||
     null
-
-  const handleOpenRegenerate = () => {
-    if (!activeArticle) return
-    setRegenTopic(activeArticle.topic)
-    setRegenTone(activeArticle.tone || "TechnicalDeepDive")
-    setRegenWordCount(activeArticle.targetWordCount || 800)
-    setRegenOpen(true)
-  }
-
-  const handleConfirmRegenerate = async () => {
-    if (!activeArticle) return
-    setActionError(null)
-    try {
-      await regenerateArticleMutation({
-        id: activeArticle.id,
-        cmd: {
-          topic: regenTopic,
-          tone: regenTone,
-          targetWordCount: regenWordCount,
-        },
-      }).unwrap()
-      setRegenOpen(false)
-      setToastMessage("Article sent for re-generation!")
-    } catch (err: unknown) {
-      setActionError(getErrorMessage(err, "Failed to trigger re-generation"))
-    }
-  }
 
   const loading = articlesLoading || usersLoading
   const error =
@@ -227,7 +187,7 @@ function RouteComponent() {
               key={`${activeArticle.id}-${activeArticle.status}-${activeArticle.updatedAt}`}
               article={activeArticle}
               users={users}
-              onRegenerate={handleOpenRegenerate}
+              onRegenerate={() => setRegenOpen(true)}
               setToastMessage={setToastMessage}
             />
           ) : null}
@@ -235,57 +195,12 @@ function RouteComponent() {
       )}
 
       {/* Regenerate Modal */}
-      <Dialog open={regenOpen} onClose={() => setRegenOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-          <Replay color="primary" />
-          Regenerate Article
-        </DialogTitle>
-        <DialogContent dividers>
-          <Stack spacing={2.5} sx={{ mt: 1 }}>
-            <TextField
-              label="Topic Prompt"
-              fullWidth
-              multiline
-              rows={2}
-              value={regenTopic}
-              onChange={(e) => setRegenTopic(e.target.value)}
-            />
-            <TextField
-              select
-              fullWidth
-              label="Writing Tone"
-              value={regenTone}
-              onChange={(e) => setRegenTone(e.target.value as WritingTone)}
-            >
-              {WritingTones.map((t) => (
-                <MenuItem key={t} value={t}>
-                  <ToneChip tone={t} size="small" />
-                </MenuItem>
-              ))}
-            </TextField>
-            <TextField
-              type="number"
-              label="Target Word Count"
-              fullWidth
-              value={regenWordCount}
-              onChange={(e) => setRegenWordCount(parseInt(e.target.value, 10) || 800)}
-            />
-          </Stack>
-        </DialogContent>
-        <DialogActions sx={{ px: 3, py: 2 }}>
-          <Button onClick={() => setRegenOpen(false)} disabled={regenLoading}>
-            Cancel
-          </Button>
-          <Button
-            variant="contained"
-            onClick={handleConfirmRegenerate}
-            disabled={regenLoading}
-            startIcon={regenLoading ? <CircularProgress size={16} /> : <Replay />}
-          >
-            Regenerate Draft
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <RegenerateDialog
+        open={regenOpen}
+        onClose={() => setRegenOpen(false)}
+        article={activeArticle}
+        onSuccess={() => setToastMessage("Article sent for re-generation!")}
+      />
 
       {/* Toast Notification */}
       <Snackbar

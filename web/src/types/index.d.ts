@@ -28,6 +28,15 @@ declare global {
     tags: string[]
   }
 
+  interface UpdateUserCommand {
+    username?: string
+    email?: string
+    password?: string
+    bio?: string
+    avatarUrl?: string | null
+    tags?: string[]
+  }
+
   interface GenerateUserCommand {
     tags: string[]
   }

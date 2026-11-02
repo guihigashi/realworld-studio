@@ -13,6 +13,12 @@ final case class UserRoutes(userService: UserService):
       UserEndpoints.createUser.implement { cmd =>
         userService.createUser(cmd)
       },
+      UserEndpoints.updateUser.implement { case (id, cmd) =>
+        userService.updateUser(id, cmd)
+      },
+      UserEndpoints.deleteUser.implement { id =>
+        userService.deleteUser(id)
+      },
       UserEndpoints.listUsers.implement { _ =>
         userService.listUsers.orDie
       },

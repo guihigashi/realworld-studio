@@ -5,6 +5,11 @@ export interface GetArticlesParams {
   authorId?: string
 }
 
+export interface UpdateUserArgs {
+  id: string
+  cmd: UpdateUserCommand
+}
+
 export interface UpdateArticleArgs {
   id: string
   cmd: UpdateArticleCommand
@@ -57,6 +62,21 @@ export const api = createApi({
         body: cmd,
       }),
       invalidatesTags: ["User"],
+    }),
+    updateUser: build.mutation<User, UpdateUserArgs>({
+      query: ({ id, cmd }) => ({
+        url: `/users/${encodeURIComponent(id)}`,
+        method: "PUT",
+        body: cmd,
+      }),
+      invalidatesTags: (_result, _error, { id }) => [{ type: "User", id }, "User", "Article"],
+    }),
+    deleteUser: build.mutation<void, string>({
+      query: (id) => ({
+        url: `/users/${encodeURIComponent(id)}`,
+        method: "DELETE",
+      }),
+      invalidatesTags: ["User", "Article"],
     }),
     generateUserProfile: build.mutation<GeneratedUserProfile, GenerateUserCommand>({
       query: (cmd) => ({

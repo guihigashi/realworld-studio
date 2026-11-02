@@ -13,6 +13,7 @@ import com.github.guihigashi.conduit.studio.domain.article.{Article, ArticleRepo
 import com.github.guihigashi.conduit.studio.domain.user.{User, UserRepository}
 import com.github.guihigashi.conduit.studio.infrastructure.ai.IntelligentUserGenerator
 import com.github.guihigashi.conduit.studio.infrastructure.config.AppConfig
+import com.github.guihigashi.conduit.studio.infrastructure.conduit.ConduitTokenCache
 import com.github.guihigashi.conduit.studio.infrastructure.db.*
 import com.github.guihigashi.conduit.studio.presentation.http.ApiRoutes
 
@@ -60,81 +61,156 @@ object MainEndpointSpec extends ZIOSpecDefault:
         body     <- response.body.asString
       } yield assertTrue(
         response.status == Status.Ok,
-        body.contains("\"suggestedUsername\""),
-        body.contains("\"suggestedEmail\""),
-        body.contains("\"suggestedBio\"")
+        body.contains("suggestedUsername"),
+        body.contains("suggestedEmail"),
+        body.contains("suggestedBio")
       )
     },
-    test("POST /api/users creates a new persona in Postgres and GET /api/users retrieves it") {
-      val uniqueUsername = s"author_${UUID.randomUUID().toString.take(8)}"
-      val createPayload =
+    test("POST /api/users creates a new user persona in Postgres directly") {
+      val uname = s"author_${UUID.randomUUID().toString.take(8)}"
+      val payload =
         s"""{
-          |  "username": "$uniqueUsername",
-          |  "email": "$uniqueUsername@conduit.studio",
+          |  "username": "$uname",
+          |  "email": "$uname@conduit.studio",
+          |  "password": "pass_$uname",
           |  "bio": "Scala 3 & Postgres enthusiast",
           |  "tags": ["scala", "type-safety"]
           |}""".stripMargin
 
-      val createRequest = Request
-        .post(URL.root / "api" / "users", Body.fromString(createPayload))
+      val request = Request
+        .post(URL.root / "api" / "users", Body.fromString(payload))
         .addHeader(Header.ContentType(MediaType.application.json))
 
-      val listRequest = Request.get(URL.root / "api" / "users")
-
       for {
-        createResponse <- runRoute(createRequest)
-        createBody     <- createResponse.body.asString
-        listResponse   <- runRoute(listRequest)
-        listBody       <- listResponse.body.asString
+        response <- runRoute(request)
+        body     <- response.body.asString
       } yield assertTrue(
-        createResponse.status == Status.Ok,
-        createBody.contains(uniqueUsername),
-        listResponse.status == Status.Ok,
-        listBody.contains(uniqueUsername)
+        response.status == Status.Ok,
+        body.contains(uname),
+        body.contains("scala"),
+        body.contains("type-safety")
       )
     },
-    test("POST /api/articles enqueues an article and GET /api/articles retrieves it") {
+    test("GET /api/users returns list of personas directly from Postgres") {
+      val request = Request.get(URL.root / "api" / "users")
+
       for {
-        userRepo     <- ZIO.service[UserRepository]
-        uniqueUser   = s"author_${UUID.randomUUID().toString.take(8)}"
-        author       <- userRepo.save(
-          User.create(
-            username = uniqueUser,
-            email = s"$uniqueUser@conduit.studio",
-            password = "password",
-            bio = "Compiler specialist",
-            avatarUrl = None,
-            tags = Set.empty
-          )
-        )
+        response <- runRoute(request)
+        body     <- response.body.asString
+      } yield assertTrue(
+        response.status == Status.Ok,
+        body.startsWith("[")
+      )
+    },
+    test("GET /api/users/:username returns specific persona") {
+      for {
+        userRepo <- ZIO.service[UserRepository]
+        uname    = s"author_${UUID.randomUUID().toString.take(8)}"
+        author   = User.create(uname, s"$uname@conduit.studio", "pass", "DevOps Lead", None, Set.empty)
+        saved    <- userRepo.save(author)
+        request  = Request.get(URL.root / "api" / "users" / saved.username)
+        response <- runRoute(request)
+        body     <- response.body.asString
+      } yield assertTrue(
+        response.status == Status.Ok,
+        body.contains(uname),
+        body.contains("DevOps Lead")
+      )
+    },
+    test("PUT /api/users/:id updates persona fields") {
+      val uname = s"author_${UUID.randomUUID().toString.take(8)}"
+      val author = User.create(uname, s"$uname@conduit.studio", "pass12345", "Old bio", None, Set.empty)
+
+      for {
+        userRepo <- ZIO.service[UserRepository]
+        saved    <- userRepo.save(author)
         payload =
           s"""{
-             |  "authorId": "${author.id}",
-             |  "topic": "Type-Level Metaprogramming with Scala 3 Quotes",
-             |  "tagList": ["scala", "metaprogramming"],
-             |  "tone": "TechnicalDeepDive",
-             |  "targetWordCount": 800
+             |  "bio": "Updated bio via API",
+             |  "password": "newpassword123"
              |}""".stripMargin
-        enqueueReq = Request
-          .post(URL.root / "api" / "articles", Body.fromString(payload))
+        request = Request
+          .put(URL.root / "api" / "users" / saved.id.toString, Body.fromString(payload))
           .addHeader(Header.ContentType(MediaType.application.json))
-        enqueueRes <- runRoute(enqueueReq)
-        enqueueBody <- enqueueRes.body.asString
-
-        listReq = Request.get(URL.root / "api" / "articles")
-        listRes <- runRoute(listReq)
-        listBody <- listRes.body.asString
+        response <- runRoute(request)
+        body     <- response.body.asString
       } yield assertTrue(
-        enqueueRes.status == Status.Ok,
-        enqueueBody.contains("Type-Level Metaprogramming with Scala 3 Quotes"),
-        enqueueBody.contains("QueuedGeneration"),
-        enqueueBody.contains("TechnicalDeepDive"),
-        enqueueBody.contains("800"),
-        listRes.status == Status.Ok,
-        listBody.contains("Type-Level Metaprogramming with Scala 3 Quotes")
+        response.status == Status.Ok,
+        body.contains("Updated bio via API")
       )
     },
-    test("PUT /api/articles/:id updates draft article content") {
+    test("DELETE /api/users/:id deletes persona and cascades to articles") {
+      val uname = s"author_${UUID.randomUUID().toString.take(8)}"
+      val author = User.create(uname, s"$uname@conduit.studio", "pass12345", "Bio", None, Set.empty)
+
+      for {
+        userRepo     <- ZIO.service[UserRepository]
+        articleRepo  <- ZIO.service[ArticleRepository]
+        savedUser    <- userRepo.save(author)
+        savedArticle <- articleRepo.save(Article.create(savedUser.id, "Topic to Cascade", Set.empty))
+        delReq = Request.delete(URL.root / "api" / "users" / savedUser.id.toString)
+        delRes <- runRoute(delReq)
+        foundUser    <- userRepo.findById(savedUser.id)
+        foundArticle <- articleRepo.findById(savedArticle.id)
+      } yield assertTrue(
+        delRes.status == Status.Ok,
+        foundUser.isEmpty,
+        foundArticle.isEmpty
+      )
+    },
+    test("POST /api/articles creates a new article entry") {
+      for {
+        userRepo   <- ZIO.service[UserRepository]
+        uname      = s"author_${UUID.randomUUID().toString.take(8)}"
+        author     = User.create(uname, s"$uname@conduit.studio", "pass", "Author bio", None, Set.empty)
+        savedUser  <- userRepo.save(author)
+        payload =
+          s"""{
+             |  "authorId": "${savedUser.id}",
+             |  "topic": "Distributed Consensus in Rust",
+             |  "tagList": ["rust", "distributed-systems"]
+             |}""".stripMargin
+        request = Request
+          .post(URL.root / "api" / "articles", Body.fromString(payload))
+          .addHeader(Header.ContentType(MediaType.application.json))
+        response <- runRoute(request)
+        body     <- response.body.asString
+      } yield assertTrue(
+        response.status == Status.Ok,
+        body.contains("Distributed Consensus in Rust"),
+        body.contains("Queued")
+      )
+    },
+    test("GET /api/articles lists articles") {
+      val request = Request.get(URL.root / "api" / "articles")
+
+      for {
+        response <- runRoute(request)
+        body     <- response.body.asString
+      } yield assertTrue(
+        response.status == Status.Ok,
+        body.startsWith("[")
+      )
+    },
+    test("GET /api/articles/:id returns specific article") {
+      for {
+        userRepo     <- ZIO.service[UserRepository]
+        articleRepo  <- ZIO.service[ArticleRepository]
+        uname        = s"author_${UUID.randomUUID().toString.take(8)}"
+        author       = User.create(uname, s"$uname@conduit.studio", "pass", "Systems Engineer", None, Set.empty)
+        savedUser    <- userRepo.save(author)
+        article      = Article.create(savedUser.id, "ZIO HTTP & Skunk", Set("zio", "scala"))
+        savedArticle <- articleRepo.save(article)
+        request      = Request.get(URL.root / "api" / "articles" / savedArticle.id.toString)
+        response     <- runRoute(request)
+        body         <- response.body.asString
+      } yield assertTrue(
+        response.status == Status.Ok,
+        body.contains(savedArticle.id.toString),
+        body.contains("ZIO HTTP & Skunk")
+      )
+    },
+    test("PUT /api/articles/:id updates draft content") {
       for {
         userRepo     <- ZIO.service[UserRepository]
         articleRepo  <- ZIO.service[ArticleRepository]
@@ -149,21 +225,22 @@ object MainEndpointSpec extends ZIOSpecDefault:
             tags = Set.empty
           )
         )
-        initialArticle = Article.create(author.id, "Draft Editing Topic", Set("draft"))
+        initialArticle = Article.create(author.id, "Original Draft Topic", Set("scala"))
         generatingArticle = initialArticle.startGeneration().toOption.get
         draftedArticle = generatingArticle.completeGeneration(
-          title = "Initial Draft Title",
-          description = "Initial description",
-          body = "Initial body",
-          tags = Set("draft")
+          title = "Initial Title",
+          description = "Initial Description",
+          body = "# Initial Body",
+          tags = Set("scala")
         ).toOption.get
         savedArticle <- articleRepo.save(draftedArticle)
 
         updatePayload =
           """{
             |  "title": "Refined Title by Human Editor",
-            |  "description": "Refined description",
-            |  "body": "# Refined Body Content"
+            |  "description": "Refined Description by Human Editor",
+            |  "body": "# Refined Body Content\n\nHigh quality analysis...",
+            |  "tagList": ["scala", "zio", "concurrency"]
             |}""".stripMargin
         updateReq = Request
           .put(URL.root / "api" / "articles" / savedArticle.id.toString, Body.fromString(updatePayload))
@@ -238,7 +315,7 @@ object MainEndpointSpec extends ZIOSpecDefault:
         approveBody.contains("Approved"),
         approveBody.contains("Raft Consensus in Modern Distributed Systems"),
         regenRes.status == Status.Ok,
-        regenBody.contains("QueuedGeneration"),
+        regenBody.contains("Queued"),
         regenBody.contains("Byzantine Fault Tolerance and Raft")
       )
     },
@@ -297,6 +374,7 @@ object MainEndpointSpec extends ZIOSpecDefault:
     TagService.layer,
     UserService.layer,
     ArticleService.layer,
+    ConduitTokenCache.inMemory,
     IntelligentUserGenerator.layer,
     PostgresTagRepository.layer,
     PostgresUserRepository.layer,

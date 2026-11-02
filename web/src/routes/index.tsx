@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router"
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import {
   Alert,
   Autocomplete,
@@ -18,10 +18,11 @@ import {
   TextField,
   Typography,
 } from "@mui/material"
-import { AutoAwesome, LocalOffer, PersonAdd, Refresh } from "@mui/icons-material"
+import { AutoAwesome, Delete, Edit, LocalOffer, PersonAdd, Refresh } from "@mui/icons-material"
 import { api } from "@/state/api.ts"
 import { getErrorMessage } from "@/state/helpers.ts"
 import { PaperBanner } from "@/components/PaperBanner.tsx"
+import { PersonaDialog } from "@/components/PersonaDialog.tsx"
 
 export const Route = createFileRoute("/")({
   component: RouteComponent,
@@ -47,8 +48,16 @@ function RouteComponent() {
   const [seedTagsMutation] = api.useSeedTagsMutation()
   const [generateUserProfileMutation, { isLoading: aiGenerating }] = api.useGenerateUserProfileMutation()
   const [createUserMutation] = api.useCreateUserMutation()
+  const [deleteUserMutation, { isLoading: deleting }] = api.useDeleteUserMutation()
 
   const [actionError, setActionError] = useState<string | null>(null)
+
+  // Persona Modal State (Add / Edit)
+  const [personaDialogOpen, setPersonaDialogOpen] = useState(false)
+  const [selectedUserForEdit, setSelectedUserForEdit] = useState<User | null>(null)
+
+  // Delete Confirmation Modal State
+  const [deleteConfirmUser, setDeleteConfirmUser] = useState<User | null>(null)
 
   // Generate with AI Modal State
   const [aiModalOpen, setAiModalOpen] = useState(false)
@@ -57,18 +66,7 @@ function RouteComponent() {
   const [aiError, setAiError] = useState<string | null>(null)
   const [aiSaving, setAiSaving] = useState(false)
 
-  // Manual Create Modal State
-  const [manualModalOpen, setManualModalOpen] = useState(false)
-  const [manualForm, setManualForm] = useState({
-    username: "",
-    email: "",
-    password: "",
-    bio: "",
-    avatarUrl: "",
-    tags: [] as string[],
-  })
-  const [manualSaving, setManualSaving] = useState(false)
-  const [manualError, setManualError] = useState<string | null>(null)
+  const availableTagValues = useMemo(() => tags.map((t) => t.value), [tags])
 
   const handleRefresh = () => {
     void fetchUsers()
@@ -117,35 +115,24 @@ function RouteComponent() {
     }
   }
 
-  const handleManualSubmit = async () => {
-    if (!manualForm.username || !manualForm.email || !manualForm.bio) {
-      setManualError("Username, email, and bio are required")
-      return
-    }
-    setManualSaving(true)
-    setManualError(null)
+  const handleOpenAdd = () => {
+    setSelectedUserForEdit(null)
+    setPersonaDialogOpen(true)
+  }
+
+  const handleOpenEdit = (user: User) => {
+    setSelectedUserForEdit(user)
+    setPersonaDialogOpen(true)
+  }
+
+  const handleConfirmDelete = async () => {
+    if (!deleteConfirmUser) return
+    setActionError(null)
     try {
-      await createUserMutation({
-        username: manualForm.username,
-        email: manualForm.email,
-        password: manualForm.password || "password123",
-        bio: manualForm.bio,
-        avatarUrl: manualForm.avatarUrl || undefined,
-        tags: manualForm.tags,
-      }).unwrap()
-      setManualModalOpen(false)
-      setManualForm({
-        username: "",
-        email: "",
-        password: "",
-        bio: "",
-        avatarUrl: "",
-        tags: [],
-      })
+      await deleteUserMutation(deleteConfirmUser.id).unwrap()
+      setDeleteConfirmUser(null)
     } catch (err: unknown) {
-      setManualError(getErrorMessage(err, "Failed to create persona"))
-    } finally {
-      setManualSaving(false)
+      setActionError(getErrorMessage(err, "Failed to delete persona"))
     }
   }
 
@@ -185,7 +172,7 @@ function RouteComponent() {
           <Button variant="outlined" startIcon={<Refresh />} onClick={handleRefresh} disabled={loading}>
             Refresh
           </Button>
-          <Button variant="outlined" startIcon={<PersonAdd />} onClick={() => setManualModalOpen(true)}>
+          <Button variant="outlined" startIcon={<PersonAdd />} onClick={handleOpenAdd}>
             Add Manually
           </Button>
           <Button
@@ -243,7 +230,7 @@ function RouteComponent() {
         >
           {users.map((user) => (
             <Card key={user.id} sx={{ height: "100%", display: "flex", flexDirection: "column" }}>
-              <CardContent sx={{ flex: 1, p: 2.5 }}>
+              <CardContent sx={{ flex: 1, p: 2.5, display: "flex", flexDirection: "column" }}>
                 <Stack direction="row" spacing={2} sx={{ alignItems: "center", mb: 2 }}>
                   <Avatar
                     src={user.avatarUrl || undefined}
@@ -284,7 +271,7 @@ function RouteComponent() {
                   {user.bio}
                 </Typography>
 
-                <Box sx={{ mt: "auto" }}>
+                <Box sx={{ mt: "auto", mb: 2 }}>
                   <Typography
                     variant="caption"
                     color="text.secondary"
@@ -308,11 +295,81 @@ function RouteComponent() {
                     ))}
                   </Box>
                 </Box>
+
+                {/* Card Actions: Edit and Delete */}
+                <Stack
+                  direction="row"
+                  spacing={1}
+                  sx={{
+                    pt: 1.5,
+                    borderTop: "1px solid rgba(255, 255, 255, 0.08)",
+                    justifyContent: "flex-end",
+                  }}
+                >
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    color="inherit"
+                    startIcon={<Edit />}
+                    onClick={() => handleOpenEdit(user)}
+                  >
+                    Edit
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    color="error"
+                    startIcon={<Delete />}
+                    onClick={() => setDeleteConfirmUser(user)}
+                  >
+                    Delete
+                  </Button>
+                </Stack>
               </CardContent>
             </Card>
           ))}
         </Box>
       )}
+
+      {/* RHF Controlled Persona Modal (Add / Edit) */}
+      <PersonaDialog
+        open={personaDialogOpen}
+        onClose={() => setPersonaDialogOpen(false)}
+        user={selectedUserForEdit}
+        availableTags={availableTagValues}
+      />
+
+      {/* Delete Confirmation Modal */}
+      <Dialog
+        open={Boolean(deleteConfirmUser)}
+        onClose={() => !deleting && setDeleteConfirmUser(null)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle sx={{ fontWeight: 700 }}>Delete Persona & Articles?</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Are you sure you want to delete <strong>@{deleteConfirmUser?.username}</strong>?
+          </Typography>
+          <Alert severity="warning">
+            This action cannot be undone. All articles authored by this persona will also be deleted from the database.
+          </Alert>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2.5 }}>
+          <Button onClick={() => setDeleteConfirmUser(null)} disabled={deleting}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            color="error"
+            onClick={() => void handleConfirmDelete()}
+            disabled={deleting}
+            startIcon={deleting ? <CircularProgress size={16} /> : <Delete />}
+          >
+            {deleting ? "Deleting..." : "Delete Persona & Articles"}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* AI Persona Generator Modal */}
       <Dialog
@@ -321,11 +378,8 @@ function RouteComponent() {
         maxWidth="sm"
         fullWidth
       >
-        <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-          <AutoAwesome color="primary" />
-          Generate Persona with AI
-        </DialogTitle>
-        <DialogContent dividers>
+        <DialogTitle sx={{ fontWeight: 700 }}>Generate Persona with AI</DialogTitle>
+        <DialogContent>
           {aiError && (
             <Alert severity="error" sx={{ mb: 2 }} onClose={() => setAiError(null)}>
               {aiError}
@@ -333,8 +387,7 @@ function RouteComponent() {
           )}
 
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            The backend LLM synthesizes an authentic engineering persona, including realistic bio, handle, and expertise
-            based on selected domain tags.
+            Select key focus topics or technologies to guide the identity, domain style, and biography of the generated persona.
           </Typography>
 
           <Autocomplete
@@ -346,54 +399,27 @@ function RouteComponent() {
             renderInput={(params) => (
               <TextField
                 {...params}
-                label="Domain Tags (Select or Type)"
-                placeholder="e.g. scala, zio, rust..."
-                helperText="Leave empty to use default domain tags"
+                label="Target Domains"
+                placeholder={aiSelectedTags.length === 0 ? "e.g. scala, devops..." : ""}
+                helperText="Leave empty to use general defaults (scala, zio)"
               />
             )}
             sx={{ mb: 3 }}
           />
 
-          {aiGenerating ? (
-            <Box sx={{ textAlign: "center", py: 4 }}>
-              <CircularProgress size={36} sx={{ mb: 2 }} />
-              <Typography variant="body2" color="text.secondary">
-                Synthesizing persona via llama.cpp / fallback generator...
+          {aiProfile && (
+            <Card variant="outlined" sx={{ p: 2, bgcolor: "rgba(255, 255, 255, 0.02)" }}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1, color: "primary.light" }}>
+                AI Suggested Persona:
               </Typography>
-            </Box>
-          ) : aiProfile ? (
-            <Card sx={{ bgcolor: "rgba(255, 255, 255, 0.03)", p: 2 }}>
-              <Typography variant="subtitle2" color="primary" gutterBottom>
-                Synthesized Profile:
+              <Typography variant="body2">
+                <strong>Username:</strong> @{aiProfile.suggestedUsername}
               </Typography>
-              <TextField
-                label="Username"
-                fullWidth
-                size="small"
-                value={aiProfile.suggestedUsername}
-                onChange={(e) => setAiProfile({ ...aiProfile, suggestedUsername: e.target.value })}
-                sx={{ mb: 1.5 }}
-              />
-              <TextField
-                label="Email"
-                fullWidth
-                size="small"
-                value={aiProfile.suggestedEmail}
-                onChange={(e) => setAiProfile({ ...aiProfile, suggestedEmail: e.target.value })}
-                sx={{ mb: 1.5 }}
-              />
-              <TextField
-                label="Bio"
-                fullWidth
-                multiline
-                rows={3}
-                size="small"
-                value={aiProfile.suggestedBio}
-                onChange={(e) => setAiProfile({ ...aiProfile, suggestedBio: e.target.value })}
-                sx={{ mb: 1.5 }}
-              />
-              <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.5 }}>
-                Assigned Tags:
+              <Typography variant="body2">
+                <strong>Email:</strong> {aiProfile.suggestedEmail}
+              </Typography>
+              <Typography variant="body2" sx={{ mt: 1, mb: 1.5, color: "text.secondary" }}>
+                <strong>Bio:</strong> {aiProfile.suggestedBio}
               </Typography>
               <Box sx={{ display: "flex", gap: 0.5, flexWrap: "wrap" }}>
                 {aiProfile.tags.map((t) => (
@@ -401,7 +427,7 @@ function RouteComponent() {
                 ))}
               </Box>
             </Card>
-          ) : null}
+          )}
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
           <Button onClick={() => setAiModalOpen(false)} disabled={aiGenerating || aiSaving}>
@@ -414,12 +440,12 @@ function RouteComponent() {
               disabled={aiGenerating}
               startIcon={aiGenerating ? <CircularProgress size={16} /> : <AutoAwesome />}
             >
-              {aiGenerating ? "Generating..." : "Generate Profile"}
+              {aiGenerating ? "Generating..." : "Generate Identity"}
             </Button>
           ) : (
-            <>
-              <Button onClick={handleGenerateAi} disabled={aiGenerating || aiSaving}>
-                Regenerate
+            <Stack direction="row" spacing={1}>
+              <Button variant="outlined" onClick={handleGenerateAi} disabled={aiGenerating || aiSaving}>
+                Re-roll
               </Button>
               <Button
                 variant="contained"
@@ -427,88 +453,10 @@ function RouteComponent() {
                 disabled={aiSaving}
                 startIcon={aiSaving ? <CircularProgress size={16} /> : undefined}
               >
-                {aiSaving ? "Saving..." : "Accept & Save Persona"}
+                {aiSaving ? "Saving..." : "Accept Persona"}
               </Button>
-            </>
+            </Stack>
           )}
-        </DialogActions>
-      </Dialog>
-
-      {/* Manual Create Persona Modal */}
-      <Dialog open={manualModalOpen} onClose={() => !manualSaving && setManualModalOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Add Author Persona Manually</DialogTitle>
-        <DialogContent dividers>
-          {manualError && (
-            <Alert severity="error" sx={{ mb: 2 }} onClose={() => setManualError(null)}>
-              {manualError}
-            </Alert>
-          )}
-
-          <Stack spacing={2} sx={{ mt: 1 }}>
-            <TextField
-              label="Username"
-              fullWidth
-              required
-              value={manualForm.username}
-              onChange={(e) => setManualForm({ ...manualForm, username: e.target.value })}
-              placeholder="e.g. dev_sarah"
-            />
-            <TextField
-              label="Email"
-              fullWidth
-              required
-              type="email"
-              value={manualForm.email}
-              onChange={(e) => setManualForm({ ...manualForm, email: e.target.value })}
-              placeholder="e.g. sarah@example.com"
-            />
-            <TextField
-              label="Conduit Password"
-              fullWidth
-              type="password"
-              value={manualForm.password}
-              onChange={(e) => setManualForm({ ...manualForm, password: e.target.value })}
-              helperText="Used to register & authenticate against Conduit API"
-            />
-            <TextField
-              label="Avatar URL (Optional)"
-              fullWidth
-              value={manualForm.avatarUrl}
-              onChange={(e) => setManualForm({ ...manualForm, avatarUrl: e.target.value })}
-              placeholder="https://..."
-            />
-            <TextField
-              label="Bio"
-              fullWidth
-              multiline
-              rows={3}
-              required
-              value={manualForm.bio}
-              onChange={(e) => setManualForm({ ...manualForm, bio: e.target.value })}
-              placeholder="A short biography and technical background..."
-            />
-            <Autocomplete
-              multiple
-              freeSolo
-              options={tags.map((t) => t.value)}
-              value={manualForm.tags}
-              onChange={(_, newValue) => setManualForm({ ...manualForm, tags: newValue })}
-              renderInput={(params) => <TextField {...params} label="Expertise Tags" placeholder="Tags..." />}
-            />
-          </Stack>
-        </DialogContent>
-        <DialogActions sx={{ px: 3, py: 2 }}>
-          <Button onClick={() => setManualModalOpen(false)} disabled={manualSaving}>
-            Cancel
-          </Button>
-          <Button
-            variant="contained"
-            onClick={handleManualSubmit}
-            disabled={manualSaving}
-            startIcon={manualSaving ? <CircularProgress size={16} /> : undefined}
-          >
-            {manualSaving ? "Saving..." : "Create Persona"}
-          </Button>
         </DialogActions>
       </Dialog>
     </Box>

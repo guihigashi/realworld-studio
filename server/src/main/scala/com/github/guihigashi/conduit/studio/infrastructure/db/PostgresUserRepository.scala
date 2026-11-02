@@ -71,6 +71,51 @@ final case class PostgresUserRepository(pool: SkunkPool) extends UserRepository:
       }
     }
 
+  private val updatePersonaCmd: Command[(String, String, String, String, Option[String], UUID)] =
+    sql"""
+      UPDATE personas
+      SET username = ${varchar(100)},
+          email = ${varchar(255)},
+          password = ${varchar(255)},
+          bio = $text,
+          avatar_url = ${text.opt}
+      WHERE id = $uuid
+    """.command
+
+  private val deletePersonaTags: Command[UUID] =
+    sql"""
+      DELETE FROM persona_tags
+      WHERE persona_id = $uuid
+    """.command
+
+  override def update(user: User): Task[User] =
+    pool.use { session =>
+      session.transaction.use { _ =>
+        for
+          updCmd   <- session.prepare(updatePersonaCmd)
+          _        <- updCmd.execute((user.username, user.email, user.password, user.bio, user.avatarUrl, user.id))
+          delTags  <- session.prepare(deletePersonaTags)
+          _        <- delTags.execute(user.id)
+          linkCmd  <- session.prepare(linkTagByName)
+          _        <- user.tags.toList.traverse(t => linkCmd.execute((user.id, t.value.toLowerCase)))
+        yield user
+      }
+    }
+
+  private val deletePersonaCmd: Command[UUID] =
+    sql"""
+      DELETE FROM personas
+      WHERE id = $uuid
+    """.command
+
+  override def delete(id: UUID): Task[Unit] =
+    pool.use { session =>
+      for
+        delCmd <- session.prepare(deletePersonaCmd)
+        _      <- delCmd.execute(id)
+      yield ()
+    }
+
   private val selectById: Query[UUID, PersonaRow] =
     sql"""
       SELECT id, username, email, password, bio, avatar_url
@@ -110,6 +155,39 @@ final case class PostgresUserRepository(pool: SkunkPool) extends UserRepository:
       for
         qPersona <- session.prepare(selectByUsername)
         optRow   <- qPersona.option(username.trim)
+        result <- optRow match
+          case None => ZIO.succeed(None)
+          case Some(row) =>
+            session.prepare(selectTagsForPersona).flatMap { qTags =>
+              qTags.stream(row.id, 64).compile.toList.map { tags =>
+                Some(
+                  User(
+                    id = row.id,
+                    username = row.username,
+                    email = row.email,
+                    password = row.password,
+                    bio = row.bio,
+                    avatarUrl = row.avatarUrl,
+                    tags = tags.toSet
+                  )
+                )
+              }
+            }
+      yield result
+    }
+
+  private val selectByEmail: Query[String, PersonaRow] =
+    sql"""
+      SELECT id, username, email, password, bio, avatar_url
+      FROM personas
+      WHERE email = ${varchar(255)}
+    """.query(personaRow)
+
+  override def findByEmail(email: String): Task[Option[User]] =
+    pool.use { session =>
+      for
+        qPersona <- session.prepare(selectByEmail)
+        optRow   <- qPersona.option(email.trim.toLowerCase)
         result <- optRow match
           case None => ZIO.succeed(None)
           case Some(row) =>

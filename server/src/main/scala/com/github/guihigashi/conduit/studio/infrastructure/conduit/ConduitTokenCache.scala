@@ -12,6 +12,8 @@ trait ConduitTokenCache:
   def put(userId: UUID, token: String, expiresAt: Instant): Task[Unit] =
     put(userId, token, Some(expiresAt))
   def invalidate(userId: UUID): Task[Unit]
+  def clearRegistration(userId: UUID): Task[Unit]
+  def evictAll(userId: UUID): Task[Unit] = invalidate(userId) *> clearRegistration(userId)
   def isRegistered(userId: UUID): Task[Boolean]
   def markRegistered(userId: UUID): Task[Unit]
 
@@ -43,6 +45,12 @@ final case class RedisConduitTokenCache(redis: Redis) extends ConduitTokenCache:
     redis
       .del(key(userId))
       .mapError(e => new RuntimeException(s"Redis error invalidating token for $userId: $e"))
+      .unit
+
+  override def clearRegistration(userId: UUID): Task[Unit] =
+    redis
+      .del(regKey(userId))
+      .mapError(e => new RuntimeException(s"Redis error clearing registration status for $userId: $e"))
       .unit
 
   override def isRegistered(userId: UUID): Task[Boolean] =
@@ -89,6 +97,9 @@ final case class InMemoryConduitTokenCache(
 
   override def invalidate(userId: UUID): Task[Unit] =
     tokensRef.update(_ - userId)
+
+  override def clearRegistration(userId: UUID): Task[Unit] =
+    registeredRef.update(_ - userId)
 
   override def isRegistered(userId: UUID): Task[Boolean] =
     registeredRef.get.map(_.contains(userId))

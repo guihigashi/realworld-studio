@@ -1,11 +1,25 @@
-import { api } from "@/state/api.ts"
 import { useState } from "react"
+import { Controller, useForm } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { z } from "zod"
+import { Alert, Button, Card, CardContent, Stack, Tooltip, Typography } from "@mui/material"
+import { CheckCircle, Publish, Replay, Save } from "@mui/icons-material"
+import { api } from "@/state/api.ts"
 import { getErrorMessage } from "@/state/helpers.ts"
-import { Alert, Autocomplete, Button, Card, CardContent, Stack, TextField, Tooltip, Typography } from "@mui/material"
 import { StatusChip } from "@/components/StatusChip.tsx"
 import { ToneChip } from "@/components/ToneChip.tsx"
-import { CheckCircle, Publish, Replay, Save } from "@mui/icons-material"
 import { MarkdownEditor } from "@/components/MarkdownEditor.tsx"
+import { FormTextField } from "./FormTextField.tsx"
+import { FormAutocomplete } from "./FormAutocomplete.tsx"
+
+const articleEditorSchema = z.object({
+  title: z.string().trim().min(1, "Article title is required"),
+  description: z.string().trim(),
+  tagList: z.array(z.string()),
+  body: z.string(),
+})
+
+type ArticleEditorValues = z.infer<typeof articleEditorSchema>
 
 interface ArticleEditorProps {
   article: Article
@@ -19,58 +33,78 @@ export function ArticleEditor({ article, users, onRegenerate, setToastMessage }:
   const [approveArticleMutation, { isLoading: approveLoading }] = api.useApproveArticleMutation()
   const [republishArticleMutation, { isLoading: republishLoading }] = api.useRepublishArticleMutation()
 
-  const [draftTitle, setDraftTitle] = useState(article.title || article.topic || "")
-  const [draftDescription, setDraftDescription] = useState(article.description || "")
-  const [draftBody, setDraftBody] = useState(article.body || "")
-  const [draftTags, setDraftTags] = useState<string[]>(article.tagList || [])
-  const [isDirty, setIsDirty] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
 
-  const actionLoading = updateLoading || approveLoading || republishLoading
+  const {
+    control,
+    handleSubmit,
+    reset,
+    formState: { isDirty, isSubmitting },
+  } = useForm<ArticleEditorValues>({
+    resolver: zodResolver(articleEditorSchema),
+    defaultValues: {
+      title: article.title || article.topic || "",
+      description: article.description || "",
+      tagList: article.tagList || [],
+      body: article.body || "",
+    },
+    values: {
+      title: article.title || article.topic || "",
+      description: article.description || "",
+      tagList: article.tagList || [],
+      body: article.body || "",
+    },
+    resetOptions: { keepDirtyValues: true },
+  })
 
-  const handleSaveDraft = async () => {
+  const actionLoading = updateLoading || approveLoading || republishLoading || isSubmitting
+
+  const handleSaveDraft = handleSubmit(async (data) => {
     setActionError(null)
     try {
-      await updateArticleMutation({
+      const updated = await updateArticleMutation({
         id: article.id,
         cmd: {
-          title: draftTitle,
-          description: draftDescription,
-          body: draftBody,
-          tagList: draftTags,
+          title: data.title,
+          description: data.description,
+          body: data.body,
+          tagList: data.tagList,
         },
       }).unwrap()
-      setIsDirty(false)
+      reset({
+        title: updated.title || updated.topic || "",
+        description: updated.description || "",
+        body: updated.body || "",
+        tagList: updated.tagList || [],
+      })
       setToastMessage("Draft changes saved successfully!")
     } catch (err: unknown) {
       setActionError(getErrorMessage(err, "Failed to save draft"))
     }
-  }
+  })
 
-  const handleApprove = async () => {
+  const handleApprove = handleSubmit(async (data) => {
     setActionError(null)
     try {
       await approveArticleMutation({
         id: article.id,
         cmd: {
-          title: draftTitle || undefined,
-          description: draftDescription || undefined,
-          body: draftBody || undefined,
-          tagList: draftTags.length > 0 ? draftTags : undefined,
+          title: data.title || undefined,
+          description: data.description || undefined,
+          body: data.body || undefined,
+          tagList: data.tagList.length > 0 ? data.tagList : undefined,
         },
       }).unwrap()
-      setIsDirty(false)
       setToastMessage("Article approved! Background publishing worker triggered.")
     } catch (err: unknown) {
       setActionError(getErrorMessage(err, "Failed to approve article"))
     }
-  }
+  })
 
   const handleRepublish = async () => {
     setActionError(null)
     try {
       await republishArticleMutation(article.id).unwrap()
-      setIsDirty(false)
       setToastMessage("Article queued for republishing! Background publishing worker triggered.")
     } catch (err: unknown) {
       setActionError(getErrorMessage(err, "Failed to republish article"))
@@ -180,44 +214,32 @@ export function ArticleEditor({ article, users, onRegenerate, setToastMessage }:
 
         {/* Editable Metadata Fields */}
         <Stack spacing={2} sx={{ mb: 2.5 }}>
-          <TextField
+          <FormTextField
+            name="title"
+            control={control}
             label="Article Title"
             fullWidth
             size="small"
-            value={draftTitle}
-            onChange={(e) => {
-              setDraftTitle(e.target.value)
-              setIsDirty(true)
-            }}
             placeholder="Enter article title..."
           />
 
-          <TextField
+          <FormTextField
+            name="description"
+            control={control}
             label="Lead Description (1-2 sentences)"
             fullWidth
             size="small"
             multiline
             rows={2}
-            value={draftDescription}
-            onChange={(e) => {
-              setDraftDescription(e.target.value)
-              setIsDirty(true)
-            }}
             placeholder="Short description summary for search and feed cards..."
           />
 
-          <Autocomplete
-            multiple
-            freeSolo
+          <FormAutocomplete
+            name="tagList"
+            control={control}
+            label="Article Tags"
             options={article.tagList}
-            value={draftTags}
-            onChange={(_, newVal) => {
-              setDraftTags(newVal)
-              setIsDirty(true)
-            }}
-            renderInput={(params) => (
-              <TextField {...params} size="small" label="Article Tags" placeholder="Tags..." />
-            )}
+            placeholder="Tags..."
           />
         </Stack>
 
@@ -225,14 +247,17 @@ export function ArticleEditor({ article, users, onRegenerate, setToastMessage }:
         <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
           Markdown Article Content
         </Typography>
-        <MarkdownEditor
-          value={draftBody}
-          onChange={(val) => {
-            setDraftBody(val)
-            setIsDirty(true)
-          }}
-          disabled={article.status === "Generating"}
-          minHeight={450}
+        <Controller
+          name="body"
+          control={control}
+          render={({ field }) => (
+            <MarkdownEditor
+              value={field.value}
+              onChange={field.onChange}
+              disabled={article.status === "Generating"}
+              minHeight={450}
+            />
+          )}
         />
       </CardContent>
     </Card>

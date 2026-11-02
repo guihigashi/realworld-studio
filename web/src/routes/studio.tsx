@@ -1,8 +1,10 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router"
-import { useState } from "react"
+import { useMemo, useState } from "react"
+import { Controller, useForm, useWatch, type SubmitHandler } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { z } from "zod"
 import {
   Alert,
-  Autocomplete,
   Avatar,
   Box,
   Button,
@@ -13,7 +15,6 @@ import {
   MenuItem,
   Slider,
   Stack,
-  TextField,
   Typography,
 } from "@mui/material"
 import { Send, Speed } from "@mui/icons-material"
@@ -21,6 +22,26 @@ import { api } from "@/state/api.ts"
 import { getErrorMessage } from "@/state/helpers.ts"
 import { ToneChip } from "@/components/ToneChip.tsx"
 import { WritingTones } from "@/lib/constants.ts"
+import { FormTextField } from "@/components/FormTextField.tsx"
+import { FormAutocomplete } from "@/components/FormAutocomplete.tsx"
+
+const studioFormSchema = z.object({
+  authorId: z.string().min(1, "Please select an author persona"),
+  topic: z.string().trim().min(3, "Topic must be at least 3 characters"),
+  tagList: z.array(z.string()),
+  tone: z.enum(WritingTones),
+  targetWordCount: z.number().min(100).max(500),
+})
+
+type StudioFormValues = z.infer<typeof studioFormSchema>
+
+const defaultStudioValues: StudioFormValues = {
+  authorId: "",
+  topic: "",
+  tagList: [],
+  tone: "TechnicalDeepDive",
+  targetWordCount: 200,
+}
 
 export const Route = createFileRoute("/studio")({
   component: RouteComponent,
@@ -34,48 +55,51 @@ function RouteComponent() {
   const [formError, setFormError] = useState<string | null>(null)
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
 
-  // Form State
-  const [selectedAuthorId, setSelectedAuthorId] = useState<string>("")
-  const [topic, setTopic] = useState("")
-  const [customTags, setCustomTags] = useState<string[] | null>(null)
-  const [tone, setTone] = useState<WritingTone>("TechnicalDeepDive")
-  const [targetWordCount, setTargetWordCount] = useState<number>(200)
-
-  const authorId = selectedAuthorId || users[0]?.id || ""
-  const selectedUser = users.find((u) => u.id === authorId)
-  const selectedTags = customTags ?? selectedUser?.tags.map((t) => t.value) ?? []
-
-  const handleAuthorChange = (newAuthorId: string) => {
-    setSelectedAuthorId(newAuthorId)
-    const user = users.find((u) => u.id === newAuthorId)
-    setCustomTags(user ? user.tags.map((t) => t.value) : [])
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!authorId) {
-      setFormError("Please select an author persona")
-      return
+  const firstUser = users[0]
+  const initialValues = useMemo<StudioFormValues>(() => {
+    if (!firstUser) return defaultStudioValues
+    return {
+      authorId: firstUser.id,
+      topic: "",
+      tagList: firstUser.tags.map((t) => t.value),
+      tone: "TechnicalDeepDive",
+      targetWordCount: 200,
     }
-    if (!topic.trim()) {
-      setFormError("Please enter a topic or prompt for the article")
-      return
-    }
+  }, [firstUser])
 
+  const {
+    control,
+    handleSubmit,
+    setValue,
+    reset,
+    formState: { isSubmitting },
+  } = useForm<StudioFormValues>({
+    resolver: zodResolver(studioFormSchema),
+    defaultValues: defaultStudioValues,
+    values: initialValues,
+    resetOptions: { keepDirtyValues: true },
+  })
+
+  const watchedAuthorId = useWatch({ control, name: "authorId" })
+  const watchedWordCount = useWatch({ control, name: "targetWordCount" })
+
+  const selectedUser = users.find((u) => u.id === watchedAuthorId)
+
+  const onSubmit: SubmitHandler<StudioFormValues> = async (data) => {
     setFormError(null)
     setSuccessMsg(null)
 
     try {
       const article = await enqueueArticleMutation({
-        authorId,
-        topic: topic.trim(),
-        tagList: selectedTags,
-        tone,
-        targetWordCount: targetWordCount > 0 ? targetWordCount : undefined,
+        authorId: data.authorId,
+        topic: data.topic.trim(),
+        tagList: data.tagList,
+        tone: data.tone,
+        targetWordCount: data.targetWordCount > 0 ? data.targetWordCount : undefined,
       }).unwrap()
 
       setSuccessMsg(`Article "${article.topic}" queued successfully! Transitioning to generation...`)
-      setTopic("")
+      reset({ ...data, topic: "" })
 
       // Auto redirect to approval board after 1.5s
       setTimeout(() => {
@@ -134,7 +158,7 @@ function RouteComponent() {
           </Button>
         </Card>
       ) : (
-        <Card component="form" onSubmit={handleSubmit} sx={{ p: { xs: 2.5, sm: 3.5 } }}>
+        <Card component="form" onSubmit={handleSubmit(onSubmit)} sx={{ p: { xs: 2.5, sm: 3.5 } }}>
           <CardContent sx={{ p: "0 !important" }}>
             <Stack spacing={3.5}>
               {/* Persona Selection */}
@@ -142,12 +166,20 @@ function RouteComponent() {
                 <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
                   1. Select Author Persona
                 </Typography>
-                <TextField
+                <FormTextField
                   select
                   fullWidth
-                  value={authorId}
-                  onChange={(e) => handleAuthorChange(e.target.value)}
+                  name="authorId"
+                  control={control}
                   helperText="The chosen persona determines the authoring voice and RealWorld publishing account."
+                  onChange={(e) => {
+                    const newAuthorId = e.target.value
+                    const user = users.find((u) => u.id === newAuthorId)
+                    setValue("tagList", user ? user.tags.map((t) => t.value) : [], {
+                      shouldDirty: true,
+                      shouldValidate: true,
+                    })
+                  }}
                 >
                   {users.map((u) => (
                     <MenuItem key={u.id} value={u.id}>
@@ -165,7 +197,7 @@ function RouteComponent() {
                       </Stack>
                     </MenuItem>
                   ))}
-                </TextField>
+                </FormTextField>
 
                 {selectedUser && (
                   <Box
@@ -192,12 +224,12 @@ function RouteComponent() {
                 <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
                   2. Article Topic & Prompt
                 </Typography>
-                <TextField
+                <FormTextField
+                  name="topic"
+                  control={control}
                   fullWidth
                   required
                   placeholder="e.g. Architecting Resilient Event-Driven Services with ZIO 2 and PostgreSQL LISTEN/NOTIFY"
-                  value={topic}
-                  onChange={(e) => setTopic(e.target.value)}
                   helperText="The prompt guides the LLM to structure the article with technical depth, code examples, and conclusions."
                 />
               </Box>
@@ -207,19 +239,12 @@ function RouteComponent() {
                 <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
                   3. Target Tags & Keywords
                 </Typography>
-                <Autocomplete
-                  multiple
-                  freeSolo
+                <FormAutocomplete
+                  name="tagList"
+                  control={control}
                   options={selectedUser ? selectedUser.tags.map((t) => t.value) : []}
-                  value={selectedTags}
-                  onChange={(_, newValue) => setCustomTags(newValue)}
-                  renderInput={(params) => (
-                    <TextField
-                      {...params}
-                      placeholder="Add tags..."
-                      helperText="These tags will be associated with the article on Conduit."
-                    />
-                  )}
+                  placeholder="Add tags..."
+                  helperText="These tags will be associated with the article on Conduit."
                 />
               </Box>
 
@@ -235,7 +260,7 @@ function RouteComponent() {
                   <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
                     4. Writing Tone
                   </Typography>
-                  <TextField select fullWidth value={tone} onChange={(e) => setTone(e.target.value as WritingTone)}>
+                  <FormTextField select fullWidth name="tone" control={control}>
                     {WritingTones.map((t) => (
                       <MenuItem key={t} value={t}>
                         <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
@@ -243,7 +268,7 @@ function RouteComponent() {
                         </Stack>
                       </MenuItem>
                     ))}
-                  </TextField>
+                  </FormTextField>
                 </Box>
 
                 <Box>
@@ -260,20 +285,26 @@ function RouteComponent() {
                     </Typography>
                     <Chip
                       icon={<Speed sx={{ fontSize: "14px !important" }} />}
-                      label={`~${targetWordCount} words`}
+                      label={`~${watchedWordCount ?? 200} words`}
                       size="small"
                       color="secondary"
                       variant="outlined"
                     />
                   </Stack>
-                  <Slider
-                    value={targetWordCount}
-                    min={100}
-                    max={500}
-                    step={100}
-                    valueLabelDisplay="auto"
-                    onChange={(_, val) => setTargetWordCount(val as number)}
-                    sx={{ color: "secondary.main", mt: 1 }}
+                  <Controller
+                    name="targetWordCount"
+                    control={control}
+                    render={({ field }) => (
+                      <Slider
+                        value={field.value ?? 200}
+                        min={100}
+                        max={500}
+                        step={100}
+                        valueLabelDisplay="auto"
+                        onChange={(_, val) => field.onChange(val as number)}
+                        sx={{ color: "secondary.main", mt: 1 }}
+                      />
+                    )}
                   />
                   <Typography variant="caption" color="text.secondary">
                     Guides LLM generation context window and section depth.
@@ -287,8 +318,8 @@ function RouteComponent() {
                   type="submit"
                   variant="contained"
                   size="large"
-                  disabled={submitting}
-                  startIcon={submitting ? <CircularProgress size={20} color="inherit" /> : <Send />}
+                  disabled={isSubmitting || submitting}
+                  startIcon={isSubmitting || submitting ? <CircularProgress size={20} color="inherit" /> : <Send />}
                   sx={{
                     px: 4,
                     py: 1.2,
@@ -296,7 +327,7 @@ function RouteComponent() {
                     fontWeight: 600,
                   }}
                 >
-                  {submitting ? "Enqueuing..." : "Enqueue Article Generation"}
+                  {isSubmitting || submitting ? "Enqueuing..." : "Enqueue Article Generation"}
                 </Button>
               </Box>
             </Stack>
