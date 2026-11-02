@@ -15,7 +15,8 @@ final case class ArticleRoutes(
 
   val sseRoute: Route[Any, Nothing] =
     Method.GET / "api" / "events" -> handler {
-      val eventStream =
+      val initial = ZStream.succeed(ServerSentEvent.heartbeat)
+      val events =
         ZStream.scoped(eventDispatcher.hub.subscribe).flatMap { queue =>
           ZStream.fromQueue(queue).map { event =>
             ServerSentEvent(
@@ -24,7 +25,20 @@ final case class ArticleRoutes(
             )
           }
         }
-      Response.fromServerSentEvents(eventStream)
+      val heartbeats =
+        ZStream.repeatWithSchedule(ServerSentEvent.heartbeat, Schedule.spaced(30.seconds))
+
+      val eventStream = initial ++ events.merge(heartbeats)
+
+      Response
+        .fromServerSentEvents(eventStream)
+        .addHeaders(
+          Headers(
+            Header.Custom("Cache-Control", "no-store, no-transform"),
+            Header.Custom("Connection", "keep-alive"),
+            Header.Custom("X-Accel-Buffering", "no")
+          )
+        )
     }
 
   val endpointRoutes: Routes[Any, Response] =

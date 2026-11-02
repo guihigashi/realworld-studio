@@ -16,7 +16,8 @@ export function EventsProvider({ children }: { children: ReactNode }) {
       setStatus("connecting")
 
       try {
-        es = new EventSource("/api/events")
+        const url = import.meta.env.VITE_EVENTS_URL || "/api/events"
+        es = new EventSource(url)
 
         es.onopen = () => {
           if (!isDisposed) {
@@ -65,12 +66,24 @@ export function EventsProvider({ children }: { children: ReactNode }) {
       }
     }
 
+    const handleBeforeUnload = () => {
+      if (es) {
+        es.close()
+        es = null
+      }
+    }
+
+    window.addEventListener("beforeunload", handleBeforeUnload)
     connect()
 
     return () => {
       isDisposed = true
+      window.removeEventListener("beforeunload", handleBeforeUnload)
       if (reconnectTimeout) clearTimeout(reconnectTimeout)
-      if (es) es.close()
+      if (es) {
+        es.close()
+        es = null
+      }
     }
   }, [])
 

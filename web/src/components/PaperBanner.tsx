@@ -11,8 +11,8 @@ export function PaperBanner({ tags }: { tags: Tag[] }) {
         </Tooltip>
         {tags.map((tag) => (
           <Chip
-            key={tag.name}
-            label={tag.name}
+            key={tag.value}
+            label={tag.value}
             size="small"
             variant="outlined"
             sx={{ fontSize: "0.75rem", borderColor: "rgba(255, 255, 255, 0.12)" }}

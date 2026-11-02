@@ -16,10 +16,7 @@ import {
   TextField,
   Typography,
 } from "@mui/material"
-import {
-  Send,
-  Speed,
-} from "@mui/icons-material"
+import { Send, Speed } from "@mui/icons-material"
 import { api } from "@/state/api.ts"
 import { getErrorMessage } from "@/state/helpers.ts"
 import { ToneChip } from "@/components/ToneChip.tsx"
@@ -42,16 +39,16 @@ function RouteComponent() {
   const [topic, setTopic] = useState("")
   const [customTags, setCustomTags] = useState<string[] | null>(null)
   const [tone, setTone] = useState<WritingTone>("TechnicalDeepDive")
-  const [targetWordCount, setTargetWordCount] = useState<number>(800)
+  const [targetWordCount, setTargetWordCount] = useState<number>(200)
 
   const authorId = selectedAuthorId || users[0]?.id || ""
   const selectedUser = users.find((u) => u.id === authorId)
-  const selectedTags = customTags ?? selectedUser?.tags.map((t) => t.name) ?? []
+  const selectedTags = customTags ?? selectedUser?.tags.map((t) => t.value) ?? []
 
   const handleAuthorChange = (newAuthorId: string) => {
     setSelectedAuthorId(newAuthorId)
     const user = users.find((u) => u.id === newAuthorId)
-    setCustomTags(user ? user.tags.map((t) => t.name) : [])
+    setCustomTags(user ? user.tags.map((t) => t.value) : [])
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -213,7 +210,7 @@ function RouteComponent() {
                 <Autocomplete
                   multiple
                   freeSolo
-                  options={selectedUser ? selectedUser.tags.map((t) => t.name) : []}
+                  options={selectedUser ? selectedUser.tags.map((t) => t.value) : []}
                   value={selectedTags}
                   onChange={(_, newValue) => setCustomTags(newValue)}
                   renderInput={(params) => (
@@ -271,8 +268,8 @@ function RouteComponent() {
                   </Stack>
                   <Slider
                     value={targetWordCount}
-                    min={300}
-                    max={2500}
+                    min={100}
+                    max={500}
                     step={100}
                     valueLabelDisplay="auto"
                     onChange={(_, val) => setTargetWordCount(val as number)}

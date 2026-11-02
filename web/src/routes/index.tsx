@@ -77,7 +77,7 @@ function RouteComponent() {
 
   const handleSeedTags = async () => {
     try {
-      await seedTagsMutation(DEFAULT_SEED_TAGS.map((name) => ({ name }))).unwrap()
+      await seedTagsMutation(DEFAULT_SEED_TAGS.map((value) => ({ value }))).unwrap()
     } catch (err: unknown) {
       setActionError(getErrorMessage(err, "Failed to seed tags"))
     }
@@ -105,7 +105,7 @@ function RouteComponent() {
         email: aiProfile.suggestedEmail,
         password: aiProfile.suggestedPassword || "password123",
         bio: aiProfile.suggestedBio,
-        tags: aiProfile.tags.map((t) => t.name),
+        tags: aiProfile.tags.map((t) => t.value),
       }).unwrap()
       setAiModalOpen(false)
       setAiProfile(null)
@@ -295,8 +295,8 @@ function RouteComponent() {
                   <Box sx={{ display: "flex", gap: 0.7, flexWrap: "wrap" }}>
                     {user.tags.map((tag) => (
                       <Chip
-                        key={tag.name}
-                        label={`#${tag.name}`}
+                        key={tag.value}
+                        label={`#${tag.value}`}
                         size="small"
                         sx={{
                           fontSize: "0.75rem",
@@ -340,7 +340,7 @@ function RouteComponent() {
           <Autocomplete
             multiple
             freeSolo
-            options={tags.map((t) => t.name)}
+            options={tags.map((t) => t.value)}
             value={aiSelectedTags}
             onChange={(_, newValue) => setAiSelectedTags(newValue)}
             renderInput={(params) => (
@@ -397,7 +397,7 @@ function RouteComponent() {
               </Typography>
               <Box sx={{ display: "flex", gap: 0.5, flexWrap: "wrap" }}>
                 {aiProfile.tags.map((t) => (
-                  <Chip key={t.name} label={`#${t.name}`} size="small" />
+                  <Chip key={t.value} label={`#${t.value}`} size="small" />
                 ))}
               </Box>
             </Card>
@@ -490,7 +490,7 @@ function RouteComponent() {
             <Autocomplete
               multiple
               freeSolo
-              options={tags.map((t) => t.name)}
+              options={tags.map((t) => t.value)}
               value={manualForm.tags}
               onChange={(_, newValue) => setManualForm({ ...manualForm, tags: newValue })}
               renderInput={(params) => <TextField {...params} label="Expertise Tags" placeholder="Tags..." />}

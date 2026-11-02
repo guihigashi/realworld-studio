@@ -32,7 +32,7 @@ export const api = createApi({
       query: () => "/tags",
       providesTags: ["Tag"],
     }),
-    seedTags: build.mutation<void, Tag[]>({
+    seedTags: build.mutation<void, Partial<Tag>[]>({
       query: (tags) => ({
         url: "/tags/seed",
         method: "POST",

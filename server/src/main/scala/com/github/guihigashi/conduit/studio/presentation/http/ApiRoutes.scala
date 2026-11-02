@@ -18,15 +18,16 @@ final case class ApiRoutes(
     articleService: ArticleService,
     eventDispatcher: ArticleEventDispatcher
 ):
-  val tagRoutes      = TagRoutes(tagService)
-  val userRoutes     = UserRoutes(userService)
-  val articleRoutes   = ArticleRoutes(articleService, eventDispatcher)
-  val allEndpoints   = TagEndpoints.all ++ UserEndpoints.all ++ ArticleEndpoints.all
-  val openApi        = OpenAPIGen.fromEndpoints("Conduit Studio API", "1.0.0", allEndpoints)
-  val swaggerRoutes  = SwaggerUI.routes("docs" / "openapi", openApi)
+  val tagRoutes     = TagRoutes(tagService)
+  val userRoutes    = UserRoutes(userService)
+  val articleRoutes = ArticleRoutes(articleService, eventDispatcher)
+  val allEndpoints  = TagEndpoints.all ++ UserEndpoints.all ++ ArticleEndpoints.all
+  val openApi       = OpenAPIGen.fromEndpoints("Conduit Studio API", "1.0.0", allEndpoints)
+  val swaggerRoutes = SwaggerUI.routes("docs" / "openapi", openApi)
 
   val routes: Routes[Any, Response] =
-    tagRoutes.routes ++ userRoutes.routes ++ articleRoutes.routes ++ swaggerRoutes
+    (tagRoutes.routes ++ userRoutes.routes ++ articleRoutes.routes ++ swaggerRoutes) @@
+      (Middleware.cors ++ Middleware.debug)
 
   def serve: ZIO[Server, Throwable, Nothing] =
     Server.serve(routes)

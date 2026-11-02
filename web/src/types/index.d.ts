@@ -5,7 +5,8 @@ declare global {
   type ArticleStatus = (typeof ArticleStatuses)[number]
 
   interface Tag {
-    name: string
+    id: number
+    value: string
   }
 
   interface User {
