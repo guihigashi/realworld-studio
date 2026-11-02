@@ -38,10 +38,15 @@ object ArticleEndpoints:
       .out[Article]
       .outError[String](Status.BadRequest)
 
+  val republishArticle =
+    Endpoint(Method.POST / "api" / "articles" / uuid("id") / "republish")
+      .out[Article]
+      .outError[String](Status.BadRequest)
+
   val regenerateArticle =
     Endpoint(Method.POST / "api" / "articles" / uuid("id") / "regenerate")
       .in[RegenerateArticleCommand]
       .out[Article]
       .outError[String](Status.BadRequest)
 
-  val all = List(enqueueArticle, listArticles, getArticle, updateArticle, approveArticle, regenerateArticle)
+  val all = List(enqueueArticle, listArticles, getArticle, updateArticle, approveArticle, republishArticle, regenerateArticle)

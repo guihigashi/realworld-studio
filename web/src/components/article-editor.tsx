@@ -4,7 +4,7 @@ import { getErrorMessage } from "@/state/helpers.ts"
 import { Alert, Autocomplete, Button, Card, CardContent, Stack, TextField, Tooltip, Typography } from "@mui/material"
 import { StatusChip } from "@/components/StatusChip.tsx"
 import { ToneChip } from "@/components/ToneChip.tsx"
-import { CheckCircle, Replay, Save } from "@mui/icons-material"
+import { CheckCircle, Publish, Replay, Save } from "@mui/icons-material"
 import { MarkdownEditor } from "@/components/MarkdownEditor.tsx"
 
 interface ArticleEditorProps {
@@ -17,6 +17,7 @@ interface ArticleEditorProps {
 export function ArticleEditor({ article, users, onRegenerate, setToastMessage }: ArticleEditorProps) {
   const [updateArticleMutation, { isLoading: updateLoading }] = api.useUpdateArticleMutation()
   const [approveArticleMutation, { isLoading: approveLoading }] = api.useApproveArticleMutation()
+  const [republishArticleMutation, { isLoading: republishLoading }] = api.useRepublishArticleMutation()
 
   const [draftTitle, setDraftTitle] = useState(article.title || article.topic || "")
   const [draftDescription, setDraftDescription] = useState(article.description || "")
@@ -25,7 +26,7 @@ export function ArticleEditor({ article, users, onRegenerate, setToastMessage }:
   const [isDirty, setIsDirty] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
 
-  const actionLoading = updateLoading || approveLoading
+  const actionLoading = updateLoading || approveLoading || republishLoading
 
   const handleSaveDraft = async () => {
     setActionError(null)
@@ -62,6 +63,17 @@ export function ArticleEditor({ article, users, onRegenerate, setToastMessage }:
       setToastMessage("Article approved! Background publishing worker triggered.")
     } catch (err: unknown) {
       setActionError(getErrorMessage(err, "Failed to approve article"))
+    }
+  }
+
+  const handleRepublish = async () => {
+    setActionError(null)
+    try {
+      await republishArticleMutation(article.id).unwrap()
+      setIsDirty(false)
+      setToastMessage("Article queued for republishing! Background publishing worker triggered.")
+    } catch (err: unknown) {
+      setActionError(getErrorMessage(err, "Failed to republish article"))
     }
   }
 
@@ -118,16 +130,31 @@ export function ArticleEditor({ article, users, onRegenerate, setToastMessage }:
               Save Draft
             </Button>
 
-            <Button
-              variant="contained"
-              color="primary"
-              size="small"
-              startIcon={<CheckCircle />}
-              onClick={handleApprove}
-              disabled={actionLoading || article.status !== "PendingApproval"}
-            >
-              Approve & Publish
-            </Button>
+            {article.status === "PendingApproval" && (
+              <Button
+                variant="contained"
+                color="primary"
+                size="small"
+                startIcon={<CheckCircle />}
+                onClick={handleApprove}
+                disabled={actionLoading}
+              >
+                Approve & Publish
+              </Button>
+            )}
+
+            {(article.status === "Published" || article.status === "Failed") && (
+              <Button
+                variant="contained"
+                color="warning"
+                size="small"
+                startIcon={<Publish />}
+                onClick={handleRepublish}
+                disabled={actionLoading}
+              >
+                Republish
+              </Button>
+            )}
           </Stack>
         </Stack>
 

@@ -13,7 +13,7 @@ import {
   TextField,
   Typography,
 } from "@mui/material"
-import { CheckCircleOutlined, ErrorOutlined, History, Link, OpenInNew, Refresh, Replay } from "@mui/icons-material"
+import { CheckCircleOutlined, ErrorOutlined, History, Link, OpenInNew, Publish, Refresh, Replay } from "@mui/icons-material"
 import { useEvents } from "@/hooks/useEvents.ts"
 import { api } from "@/state/api.ts"
 import { getErrorMessage } from "@/state/helpers.ts"
@@ -34,6 +34,7 @@ function RouteComponent() {
   } = api.useGetArticlesQuery()
   const { data: rawUsers = [], isLoading: usersLoading, error: usersError } = api.useGetUsersQuery()
   const [regenerateArticleMutation, { isLoading: retryLoading }] = api.useRegenerateArticleMutation()
+  const [republishArticleMutation, { isLoading: republishLoading }] = api.useRepublishArticleMutation()
 
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [authorFilter, setAuthorFilter] = useState<string>("all")
@@ -73,6 +74,15 @@ function RouteComponent() {
       await regenerateArticleMutation({ id: articleId }).unwrap()
     } catch (err: unknown) {
       setActionError(getErrorMessage(err, "Failed to retry article"))
+    }
+  }
+
+  const handleRepublish = async (articleId: string) => {
+    setActionError(null)
+    try {
+      await republishArticleMutation(articleId).unwrap()
+    } catch (err: unknown) {
+      setActionError(getErrorMessage(err, "Failed to republish article"))
     }
   }
 
@@ -254,6 +264,19 @@ function RouteComponent() {
                           endIcon={<OpenInNew sx={{ fontSize: 14 }} />}
                         >
                           View on Conduit
+                        </Button>
+                      )}
+
+                      {(article.status === "Published" || article.status === "Failed") && (
+                        <Button
+                          variant="outlined"
+                          color="warning"
+                          size="small"
+                          startIcon={<Publish />}
+                          onClick={() => void handleRepublish(article.id)}
+                          disabled={republishLoading}
+                        >
+                          Republish
                         </Button>
                       )}
 

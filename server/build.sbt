@@ -7,9 +7,9 @@ lazy val zioLoggingVersion = "2.5.3"
 lazy val root = project
   .in(file("."))
   .settings(
-    name    := "server",
-    version := "0.1.0-SNAPSHOT",
-    Test / fork := true,
+    name                     := "server",
+    version                  := "0.1.0-SNAPSHOT",
+    Test / fork              := true,
     Test / parallelExecution := false,
     libraryDependencies ++= Seq(
       "dev.zio" %% "zio"               % zioVersion,
@@ -23,8 +23,10 @@ lazy val root = project
       "dev.zio" %% "zio-logging"               % zioLoggingVersion,
       "dev.zio" %% "zio-logging-slf4j2-bridge" % zioLoggingVersion,
 
-      "dev.zio"      %% "zio-http"         % "3.11.6",
-      "dev.zio"      %% "zio-interop-cats" % "23.1.0.14",
-      "org.tpolecat" %% "skunk-core"       % "2.0.0-RC3",
+      "dev.zio"              %% "zio-http"         % "3.11.6",
+      "dev.zio"              %% "zio-interop-cats" % "23.1.0.14",
+      "org.tpolecat"         %% "skunk-core"       % "2.0.0-RC3",
+      "dev.zio"              %% "zio-redis"        % "1.3.0",
+      "com.github.jwt-scala" %% "jwt-core"         % "12.0.0"
     ),
   )

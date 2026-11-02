@@ -21,6 +21,8 @@ enum ArticleStatus derives Schema:
     case (Approved, QueuedGeneration)        => true
     case (Publishing, Published)             => true
     case (Publishing, Failed)                => true
+    case (Published, Approved)               => true
+    case (Failed, Approved)                  => true
     case (Failed, QueuedGeneration)          => true
     case _                                   => false
 

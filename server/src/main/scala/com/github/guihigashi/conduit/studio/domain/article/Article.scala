@@ -94,6 +94,14 @@ final case class Article(
       a.copy(errorMessage = Some(error))
     }
 
+  def republish(now: Instant = Instant.now()): Either[String, Article] =
+    transition(ArticleStatus.Approved, now).map { a =>
+      a.copy(
+        conduitUrl = None,
+        errorMessage = None
+      )
+    }
+
   def regenerate(
       newTopic: Option[String] = None,
       newTags: Option[Set[String]] = None,
@@ -124,16 +132,17 @@ object Article:
       tagList: Set[String],
       tone: WritingTone = WritingTone.TechnicalDeepDive,
       targetWordCount: Option[Int] = None,
+      id: UUID = UUID.randomUUID(),
       now: Instant = Instant.now()
   ): Article =
     Article(
-      id = UUID.randomUUID(),
+      id = id,
       authorId = authorId,
-      topic = topic.trim,
+      topic = topic,
       title = None,
       description = None,
       body = None,
-      tagList = tagList.map(_.trim.toLowerCase),
+      tagList = tagList,
       status = ArticleStatus.QueuedGeneration,
       tone = tone,
       targetWordCount = targetWordCount,

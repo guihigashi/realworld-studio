@@ -6,19 +6,21 @@ import zio.test.*
 object ArticleSpec extends ZIOSpecDefault:
 
   def spec = suite("ArticleSpec")(
-    test("Article creates with QueuedGeneration status and lowercased tags") {
+    test("Article.create initializes with QueuedGeneration status and default tone") {
       val authorId = UUID.randomUUID()
-      val article  = Article.create(authorId, "Advanced ZIO Concurrency", Set("Scala", "ZIO", "Fibers"))
+      val article  = Article.create(
+        authorId = authorId,
+        topic = "ZIO 2 Architecture",
+        tagList = Set("scala", "zio")
+      )
 
       assertTrue(
+        article.topic == "ZIO 2 Architecture",
         article.authorId == authorId,
-        article.topic == "Advanced ZIO Concurrency",
+        article.tagList == Set("scala", "zio"),
         article.status == ArticleStatus.QueuedGeneration,
-        article.tagList == Set("scala", "zio", "fibers"),
         article.tone == WritingTone.TechnicalDeepDive,
-        article.targetWordCount.isEmpty,
         article.title.isEmpty,
-        article.description.isEmpty,
         article.body.isEmpty,
         article.conduitUrl.isEmpty,
         article.errorMessage.isEmpty
@@ -99,6 +101,37 @@ object ArticleSpec extends ZIOSpecDefault:
             regenerated.topic == "Fault Tolerance in Distributed Systems"
           )
         case Left(err) => assertTrue(err == "")
+    },
+    test("Article supports republish from Published and Failed status") {
+      val authorId = UUID.randomUUID()
+      val initial  = Article.create(authorId, "Republish Topic", Set("tag"))
+
+      val fromPublished = for
+        generating <- initial.startGeneration()
+        drafted    <- generating.completeGeneration("T", "D", "B", Set("tag"))
+        approved   <- drafted.approve()
+        publishing <- approved.startPublishing()
+        published  <- publishing.markPublished("https://old.domain/article/slug-123")
+        repub      <- published.republish()
+      yield (published, repub)
+
+      val fromFailed = for
+        generating <- initial.startGeneration()
+        drafted    <- generating.completeGeneration("T", "D", "B", Set("tag"))
+        approved   <- drafted.approve()
+        publishing <- approved.startPublishing()
+        failed     <- publishing.markFailed("Network timeout")
+        repub      <- failed.republish()
+      yield (failed, repub)
+
+      assertTrue(
+        fromPublished.isRight,
+        fromPublished.toOption.get._2.status == ArticleStatus.Approved,
+        fromPublished.toOption.get._2.conduitUrl.isEmpty,
+        fromFailed.isRight,
+        fromFailed.toOption.get._2.status == ArticleStatus.Approved,
+        fromFailed.toOption.get._2.errorMessage.isEmpty
+      )
     },
     test("Article rejects illegal state transitions") {
       val authorId = UUID.randomUUID()

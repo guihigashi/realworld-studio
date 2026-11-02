@@ -9,7 +9,7 @@ import com.github.guihigashi.conduit.studio.application.article.ArticleService
 import com.github.guihigashi.conduit.studio.application.tag.TagService
 import com.github.guihigashi.conduit.studio.application.user.UserService
 import com.github.guihigashi.conduit.studio.infrastructure.ai.{LlmAiUserGenerator, LlmArticleGenerator, OpenAiClient}
-import com.github.guihigashi.conduit.studio.infrastructure.conduit.LiveConduitClient
+import com.github.guihigashi.conduit.studio.infrastructure.conduit.{ConduitTokenCache, LiveConduitClient}
 import com.github.guihigashi.conduit.studio.infrastructure.db.{ArticleEventDispatcher, PostgresArticleRepository, PostgresTagRepository, PostgresUserRepository, SkunkPool}
 import com.github.guihigashi.conduit.studio.infrastructure.worker.{ArticleGenerationWorker, ArticlePublishingWorker}
 import com.github.guihigashi.conduit.studio.presentation.http.ApiRoutes
@@ -42,6 +42,7 @@ object Main extends ZIOAppDefault:
       ArticleEventDispatcher.layer,
       LlmArticleGenerator.layer,
       ArticleGenerationWorker.layer,
+      ConduitTokenCache.live,
       LiveConduitClient.live,
       ArticlePublishingWorker.layer,
       SkunkPool.live,

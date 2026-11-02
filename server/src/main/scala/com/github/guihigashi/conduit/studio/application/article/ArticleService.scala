@@ -69,6 +69,14 @@ final case class ArticleService(
       updated    <- articleRepo.update(approved)
     yield updated).mapError(_.getMessage)
 
+  def republishArticle(id: UUID): IO[String, Article] =
+    (for
+      articleOpt  <- articleRepo.findById(id)
+      article     <- ZIO.fromOption(articleOpt).orElseFail(new RuntimeException(s"Article with id '$id' not found"))
+      republished <- ZIO.fromEither(article.republish()).mapError(new RuntimeException(_))
+      updated     <- articleRepo.update(republished)
+    yield updated).mapError(_.getMessage)
+
   def regenerateArticle(id: UUID, command: RegenerateArticleCommand): IO[String, Article] =
     (for
       articleOpt  <- articleRepo.findById(id)

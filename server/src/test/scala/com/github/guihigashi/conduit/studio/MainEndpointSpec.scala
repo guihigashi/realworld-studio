@@ -12,9 +12,8 @@ import com.github.guihigashi.conduit.studio.application.user.UserService
 import com.github.guihigashi.conduit.studio.domain.article.{Article, ArticleRepository, ArticleStatus, WritingTone}
 import com.github.guihigashi.conduit.studio.domain.user.{User, UserRepository}
 import com.github.guihigashi.conduit.studio.infrastructure.ai.IntelligentUserGenerator
-import com.github.guihigashi.conduit.studio.infrastructure.conduit.LiveConduitClient
 import com.github.guihigashi.conduit.studio.infrastructure.config.AppConfig
-import com.github.guihigashi.conduit.studio.infrastructure.db.{ArticleEventDispatcher, PostgresArticleRepository, PostgresTagRepository, PostgresUserRepository, SkunkPool}
+import com.github.guihigashi.conduit.studio.infrastructure.db.*
 import com.github.guihigashi.conduit.studio.presentation.http.ApiRoutes
 
 object MainEndpointSpec extends ZIOSpecDefault:
@@ -243,6 +242,37 @@ object MainEndpointSpec extends ZIOSpecDefault:
         regenBody.contains("Byzantine Fault Tolerance and Raft")
       )
     },
+    test("POST /api/articles/:id/republish resets published article to Approved") {
+      for {
+        userRepo     <- ZIO.service[UserRepository]
+        articleRepo  <- ZIO.service[ArticleRepository]
+        uniqueUser   = s"author_${UUID.randomUUID().toString.take(8)}"
+        author       <- userRepo.save(
+          User.create(
+            username = uniqueUser,
+            email = s"$uniqueUser@conduit.studio",
+            password = "password",
+            bio = "Republisher",
+            avatarUrl = None,
+            tags = Set.empty
+          )
+        )
+        art = Article.create(author.id, "Topic Republish", Set("scala"))
+        gen = art.startGeneration().toOption.get
+        draft = gen.completeGeneration("Title", "Desc", "Body", Set("scala")).toOption.get
+        approved = draft.approve().toOption.get
+        publishing = approved.startPublishing().toOption.get
+        published = publishing.markPublished("http://127.0.0.1:3000/article/old-slug").toOption.get
+        saved <- articleRepo.save(published)
+
+        repubReq = Request.post(URL.root / "api" / "articles" / saved.id.toString / "republish", Body.empty)
+        repubRes <- runRoute(repubReq)
+        repubBody <- repubRes.body.asString
+      } yield assertTrue(
+        repubRes.status == Status.Ok,
+        repubBody.contains("Approved")
+      )
+    },
     test("GET /api/events establishes Server-Sent Events stream") {
       val request = Request.get(URL.root / "api" / "events")
 
@@ -272,7 +302,5 @@ object MainEndpointSpec extends ZIOSpecDefault:
     PostgresUserRepository.layer,
     PostgresArticleRepository.layer,
     ArticleEventDispatcher.layer,
-    LiveConduitClient.live,
-    Client.default,
     SkunkPool.live
   ) @@ TestAspect.sequential

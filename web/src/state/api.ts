@@ -110,5 +110,12 @@ export const api = createApi({
       }),
       invalidatesTags: (_result, _error, { id }) => [{ type: "Article", id }, "Article"],
     }),
+    republishArticle: build.mutation<Article, string>({
+      query: (id) => ({
+        url: `/articles/${encodeURIComponent(id)}/republish`,
+        method: "POST",
+      }),
+      invalidatesTags: (_result, _error, id) => [{ type: "Article", id }, "Article"],
+    }),
   }),
 })

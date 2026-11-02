@@ -58,6 +58,9 @@ final case class ArticleRoutes(
       ArticleEndpoints.approveArticle.implement { (id, cmd) =>
         articleService.approveArticle(id, cmd)
       },
+      ArticleEndpoints.republishArticle.implement { id =>
+        articleService.republishArticle(id)
+      },
       ArticleEndpoints.regenerateArticle.implement { (id, cmd) =>
         articleService.regenerateArticle(id, cmd)
       }

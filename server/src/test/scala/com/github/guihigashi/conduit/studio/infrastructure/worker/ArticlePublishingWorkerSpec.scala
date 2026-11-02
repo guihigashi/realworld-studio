@@ -8,7 +8,7 @@ import zio.http.Client
 import zio.test.*
 import com.github.guihigashi.conduit.studio.domain.article.*
 import com.github.guihigashi.conduit.studio.domain.user.{User, UserRepository}
-import com.github.guihigashi.conduit.studio.infrastructure.conduit.LiveConduitClient
+import com.github.guihigashi.conduit.studio.infrastructure.conduit.{ConduitTokenCache, LiveConduitClient}
 import com.github.guihigashi.conduit.studio.infrastructure.db.{ArticleEventDispatcher, PostgresArticleRepository, PostgresUserRepository, SkunkPool}
 
 object ArticlePublishingWorkerSpec extends ZIOSpecDefault:
@@ -26,8 +26,9 @@ object ArticlePublishingWorkerSpec extends ZIOSpecDefault:
         dispatcher     <- ZIO.service[ArticleEventDispatcher]
         worker         <- ZIO.service[ArticlePublishingWorker]
 
-        // Start dispatcher and worker in background fibers
+        // Start dispatcher and drain any leftover pending jobs from previous runs
         _              <- dispatcher.startListening.forkScoped
+        _              <- worker.drainPendingJobs
         _              <- worker.run.forkScoped
         _              <- Live.live(ZIO.sleep(500.millis))
 
@@ -45,7 +46,7 @@ object ArticlePublishingWorkerSpec extends ZIOSpecDefault:
         )
 
         // Create, generate, and approve article
-        initial        = Article.create(author.id, "Cloud-Native Microservices", Set("cloud-native", "kubernetes"), tone = WritingTone.Academic)
+        initial        = Article.create(author.id, "Cloud-Native Microservices", Set("cloud-native", "kubernetes"))
         generating     = initial.startGeneration().toOption.get
         drafted        = generating.completeGeneration(
           title = "Cloud-Native Microservices in Scala",
@@ -79,9 +80,10 @@ object ArticlePublishingWorkerSpec extends ZIOSpecDefault:
     PostgresUserRepository.layer,
     PostgresArticleRepository.layer,
     ArticleEventDispatcher.layer,
+    ConduitTokenCache.live,
     LiveConduitClient.live,
     Client.default,
     ArticlePublishingWorker.layer,
     SkunkPool.live,
     Scope.default
-  ) @@ TestAspect.sequential
+  ) @@ TestAspect.withLiveClock @@ TestAspect.sequential

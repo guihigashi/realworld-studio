@@ -7,5 +7,12 @@ services:
       - POSTGRES_PASSWORD="${DB_PASSWORD:-password}"
     volumes:
       - postgres_data:/var/lib/postgresql
+  redis:
+    image: redis:latest
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
 volumes:
   postgres_data:
+  redis_data:
