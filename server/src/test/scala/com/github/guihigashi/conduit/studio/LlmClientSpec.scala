@@ -6,6 +6,7 @@ import zio.json.*
 import zio.json.ast.Json
 import zio.schema.*
 import zio.test.*
+import com.github.guihigashi.conduit.studio.domain.article.{GeneratedArticle, WritingTone}
 import com.github.guihigashi.conduit.studio.domain.tag.Tag
 import com.github.guihigashi.conduit.studio.domain.user.*
 import com.github.guihigashi.conduit.studio.infrastructure.ai.*
@@ -15,13 +16,19 @@ import com.github.guihigashi.conduit.studio.infrastructure.config.{AppConfig, Op
 object LlmClientSpec extends ZIOSpecDefault:
 
   final case class TestStubLlmClient(responseJson: String) extends LlmClient:
-    override def complete(prompt: String, temperature: Double, maxTokens: Int): Task[String] =
+    override def complete(
+        prompt: String,
+        systemPrompt: Option[String],
+        temperature: Double,
+        maxTokens: Int
+    ): Task[String] =
       ZIO.succeed(responseJson)
 
     override def completeJson[T: Schema](
         prompt: String,
         systemPrompt: Option[String],
-        temperature: Double
+        temperature: Double,
+        maxTokens: Int
     ): Task[T] =
       import zio.schema.codec.JsonCodec
       val decoder = JsonCodec.jsonDecoder(Schema[T])
@@ -51,6 +58,81 @@ object LlmClientSpec extends ZIOSpecDefault:
         profile.suggestedBio == "Pioneering functional effect systems in Scala 3.",
         profile.tags.map(_.value) == List("scala", "zio")
       )
+    },
+    test("LlmArticleGenerator formats word count guidance, parses frontmatter, strips brackets from tags, and removes meta-commentary") {
+      val mockArticleMarkdown =
+        """---
+          |title: Mastering ZIO HTTP
+          |description: An in-depth guide to modern web services.
+          |tags: scala, [zio, http], "concurrency"
+          |---
+          |## Introduction
+          |Here is the complete detailed article body without any JSON escaping bugs.
+          |
+          |---
+          |This article body is approximately 800 words, meeting the specified word count range.
+          |""".stripMargin
+
+      var capturedPrompt: String = ""
+      var capturedMaxTokens: Int = 0
+
+      val capturingClient = new LlmClient:
+        override def complete(
+            prompt: String,
+            systemPrompt: Option[String],
+            temperature: Double,
+            maxTokens: Int
+        ): Task[String] =
+          capturedPrompt = prompt
+          capturedMaxTokens = maxTokens
+          ZIO.succeed(mockArticleMarkdown)
+
+        override def completeJson[T: Schema](
+            prompt: String,
+            systemPrompt: Option[String],
+            temperature: Double,
+            maxTokens: Int
+        ): Task[T] =
+          ZIO.fail(new RuntimeException("completeJson should not be called for articles"))
+
+      val generator = LlmArticleGenerator(capturingClient)
+
+      for {
+        article <- generator.generateArticle(
+          topic = "ZIO HTTP",
+          authorTags = Set(Tag("scala")),
+          writingTone = WritingTone.TechnicalDeepDive,
+          requestedTags = Set("zio"),
+          targetWordCount = Some(800)
+        )
+      } yield assertTrue(
+        capturedPrompt.contains("Target word count: 800 words"),
+        capturedPrompt.contains("CRITICAL WORD COUNT SPECIFICATION"),
+        capturedMaxTokens >= 3000,
+        article.title == "Mastering ZIO HTTP",
+        article.description == "An in-depth guide to modern web services.",
+        article.tags == List("scala", "zio", "http", "concurrency"),
+        article.body.contains("## Introduction"),
+        !article.body.contains("This article body is approximately"),
+        article.body.endsWith("escaping bugs.")
+      )
+    },
+    test("IntelligentArticleGenerator scales body length according to targetWordCount") {
+      val generator = IntelligentArticleGenerator()
+      val tags = Set(Tag("scala"), Tag("zio"))
+
+      for {
+        shortArt <- generator.generateArticle("Testing", tags, WritingTone.TechnicalDeepDive, Set.empty, Some(200))
+        longArt  <- generator.generateArticle("Testing", tags, WritingTone.TechnicalDeepDive, Set.empty, Some(1000))
+      } yield {
+        val shortWordCount = shortArt.body.split("\\s+").length
+        val longWordCount  = longArt.body.split("\\s+").length
+        assertTrue(
+          longWordCount > shortWordCount,
+          shortWordCount < 300,
+          longWordCount > 350
+        )
+      }
     },
     test("OpenAiClient derives JSON schema from Schema[T] and prints when app.mode is dev") {
       val openAiClient = OpenAiClient(
@@ -106,12 +188,19 @@ object LlmClientSpec extends ZIOSpecDefault:
     },
     test("LlmAiUserGenerator gracefully falls back when LlmClient fails") {
       val failingClient = new LlmClient:
-        override def complete(prompt: String, temperature: Double, maxTokens: Int): Task[String] =
+        override def complete(
+            prompt: String,
+            systemPrompt: Option[String],
+            temperature: Double,
+            maxTokens: Int
+        ): Task[String] =
           ZIO.fail(new RuntimeException("Connection refused (LLM offline)"))
+
         override def completeJson[T: Schema](
             prompt: String,
             systemPrompt: Option[String],
-            temperature: Double
+            temperature: Double,
+            maxTokens: Int
         ): Task[T] =
           ZIO.fail(new RuntimeException("Connection refused (LLM offline)"))
 

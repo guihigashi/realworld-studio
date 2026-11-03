@@ -14,11 +14,13 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  IconButton,
   Stack,
   TextField,
+  Tooltip,
   Typography,
 } from "@mui/material"
-import { AutoAwesome, Delete, Edit, LocalOffer, PersonAdd, Refresh } from "@mui/icons-material"
+import { AutoAwesome, Delete, Edit, LocalOffer, PersonAdd, Refresh, Shuffle } from "@mui/icons-material"
 import { api } from "@/state/api.ts"
 import { getErrorMessage } from "@/state/helpers.ts"
 import { PaperBanner } from "@/components/PaperBanner.tsx"
@@ -380,54 +382,80 @@ function RouteComponent() {
       >
         <DialogTitle sx={{ fontWeight: 700 }}>Generate Persona with AI</DialogTitle>
         <DialogContent>
-          {aiError && (
-            <Alert severity="error" sx={{ mb: 2 }} onClose={() => setAiError(null)}>
-              {aiError}
-            </Alert>
-          )}
-
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Select key focus topics or technologies to guide the identity, domain style, and biography of the generated persona.
-          </Typography>
-
-          <Autocomplete
-            multiple
-            freeSolo
-            options={tags.map((t) => t.value)}
-            value={aiSelectedTags}
-            onChange={(_, newValue) => setAiSelectedTags(newValue)}
-            renderInput={(params) => (
-              <TextField
-                {...params}
-                label="Target Domains"
-                placeholder={aiSelectedTags.length === 0 ? "e.g. scala, devops..." : ""}
-                helperText="Leave empty to use general defaults (scala, zio)"
-              />
+          <Stack spacing={2}>
+            {aiError && (
+              <Alert severity="error" sx={{ mb: 2 }} onClose={() => setAiError(null)}>
+                {aiError}
+              </Alert>
             )}
-            sx={{ mb: 3 }}
-          />
 
-          {aiProfile && (
-            <Card variant="outlined" sx={{ p: 2, bgcolor: "rgba(255, 255, 255, 0.02)" }}>
-              <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1, color: "primary.light" }}>
-                AI Suggested Persona:
-              </Typography>
-              <Typography variant="body2">
-                <strong>Username:</strong> @{aiProfile.suggestedUsername}
-              </Typography>
-              <Typography variant="body2">
-                <strong>Email:</strong> {aiProfile.suggestedEmail}
-              </Typography>
-              <Typography variant="body2" sx={{ mt: 1, mb: 1.5, color: "text.secondary" }}>
-                <strong>Bio:</strong> {aiProfile.suggestedBio}
-              </Typography>
-              <Box sx={{ display: "flex", gap: 0.5, flexWrap: "wrap" }}>
-                {aiProfile.tags.map((t) => (
-                  <Chip key={t.value} label={`#${t.value}`} size="small" />
-                ))}
-              </Box>
-            </Card>
-          )}
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Select key focus topics or technologies to guide the identity, domain style, and biography of the
+              generated persona.
+            </Typography>
+
+            <Stack direction="row" spacing={1} sx={{ alignItems: "flex-start" }}>
+              <Autocomplete
+                multiple
+                freeSolo
+                options={tags.map((t) => t.value)}
+                value={aiSelectedTags}
+                onChange={(_, newValue) => setAiSelectedTags(newValue)}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Target Domains"
+                    placeholder={aiSelectedTags.length === 0 ? "e.g. scala, devops..." : ""}
+                    helperText="Leave empty to use general defaults (scala, zio)"
+                  />
+                )}
+                sx={{ mb: 3 }}
+              />
+
+              <Tooltip title="Pick 5 random tags">
+                <IconButton
+                  onClick={() => {
+                    if (tags.length < 5) {
+                      setAiSelectedTags(tags.map((t) => t.value))
+                      return
+                    }
+
+                    const uniqueItems = new Set<string>()
+
+                    while (uniqueItems.size < 5) {
+                      uniqueItems.add(tags[Math.floor(Math.random() * tags.length)].value)
+                    }
+
+                    setAiSelectedTags(Array.from(uniqueItems))
+                  }}
+                >
+                  <Shuffle />
+                </IconButton>
+              </Tooltip>
+            </Stack>
+
+            {aiProfile && (
+              <Card variant="outlined" sx={{ p: 2, bgcolor: "rgba(255, 255, 255, 0.02)" }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1, color: "primary.light" }}>
+                  AI Suggested Persona:
+                </Typography>
+                <Typography variant="body2">
+                  <strong>Username:</strong> @{aiProfile.suggestedUsername}
+                </Typography>
+                <Typography variant="body2">
+                  <strong>Email:</strong> {aiProfile.suggestedEmail}
+                </Typography>
+                <Typography variant="body2" sx={{ mt: 1, mb: 1.5, color: "text.secondary" }}>
+                  <strong>Bio:</strong> {aiProfile.suggestedBio}
+                </Typography>
+                <Box sx={{ display: "flex", gap: 0.5, flexWrap: "wrap" }}>
+                  {aiProfile.tags.map((t) => (
+                    <Chip key={t.value} label={`#${t.value}`} size="small" />
+                  ))}
+                </Box>
+              </Card>
+            )}
+          </Stack>
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
           <Button onClick={() => setAiModalOpen(false)} disabled={aiGenerating || aiSaving}>

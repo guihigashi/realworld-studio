@@ -30,7 +30,7 @@ const studioFormSchema = z.object({
   topic: z.string().trim().min(3, "Topic must be at least 3 characters"),
   tagList: z.array(z.string()),
   tone: z.enum(WritingTones),
-  targetWordCount: z.number().min(100).max(500),
+  targetWordCount: z.number().min(100, "Minimum 100 words").max(2000, "Maximum 2000 words"),
 })
 
 type StudioFormValues = z.infer<typeof studioFormSchema>
@@ -298,7 +298,7 @@ function RouteComponent() {
                       <Slider
                         value={field.value ?? 200}
                         min={100}
-                        max={500}
+                        max={2000}
                         step={100}
                         valueLabelDisplay="auto"
                         onChange={(_, val) => field.onChange(val as number)}

@@ -2,7 +2,9 @@ package com.github.guihigashi.conduit.studio.domain.article
 
 import zio.json.*
 import zio.schema.*
+import zio.schema.annotation.rejectExtraFields
 
+@rejectExtraFields
 final case class GeneratedArticle(
     title: String,
     description: String,

@@ -33,16 +33,20 @@ final case class OpenAiClient(
 
   override def complete(
       prompt: String,
+      systemPrompt: Option[String],
       temperature: Double,
       maxTokens: Int
   ): Task[String] =
-    val messages = List(ChatMessage(role = "user", content = prompt))
+    val systemMessages = systemPrompt.map(s => ChatMessage(role = "system", content = s)).toList
+    val userMessage    = ChatMessage(role = "user", content = prompt)
+    val messages       = systemMessages :+ userMessage
     executeChatCompletion(messages, temperature, maxTokens, None)
 
   override def completeJson[T: Schema](
       prompt: String,
       systemPrompt: Option[String],
-      temperature: Double
+      temperature: Double,
+      maxTokens: Int
   ): Task[T] =
     val systemMessages = systemPrompt.map(s => ChatMessage(role = "system", content = s)).toList
     val userMessage    = ChatMessage(role = "user", content = prompt)
@@ -66,7 +70,7 @@ final case class OpenAiClient(
       rawResponse <- executeChatCompletion(
         messages = messages,
         temperature = temperature,
-        maxTokens = 1024,
+        maxTokens = maxTokens,
         responseFormat = responseFormat
       )
       decoder = JsonCodec.jsonDecoder(Schema[T])
