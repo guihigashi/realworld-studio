@@ -12,6 +12,8 @@ import {
 import { Edit, Visibility, ViewColumn } from "@mui/icons-material"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
+import rehypeHighlight from "rehype-highlight"
+import "highlight.js/styles/github-dark.css"
 
 interface MarkdownEditorProps {
   value: string
@@ -145,7 +147,7 @@ export function MarkdownEditor({
               "& h3": { fontSize: "1.15rem" },
               "& p": { mb: 1.5 },
               "& code": {
-                fontFamily: '"Fira Code", monospace',
+                fontFamily: '"Fira Code", "JetBrains Mono", Consolas, monospace',
                 bgcolor: "rgba(99, 102, 241, 0.15)",
                 color: "#a5b4fc",
                 px: 0.7,
@@ -158,11 +160,21 @@ export function MarkdownEditor({
                 p: 2,
                 borderRadius: 2,
                 overflowX: "auto",
+                maxWidth: "100%",
                 border: "1px solid rgba(255, 255, 255, 0.1)",
+                my: 2,
                 "& code": {
-                  bgcolor: "transparent",
-                  p: 0,
+                  bgcolor: "transparent !important",
+                  p: "0 !important",
                   color: "#f1f5f9",
+                  fontSize: "0.88rem",
+                  whiteSpace: "pre",
+                  wordBreak: "normal",
+                  overflowWrap: "normal",
+                },
+                "& code.hljs": {
+                  bgcolor: "transparent !important",
+                  p: "0 !important",
                 },
               },
               "& blockquote": {
@@ -192,7 +204,12 @@ export function MarkdownEditor({
             }}
           >
             {value.trim() ? (
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{value}</ReactMarkdown>
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                rehypePlugins={[rehypeHighlight]}
+              >
+                {value}
+              </ReactMarkdown>
             ) : (
               <Typography color="text.secondary" sx={{ fontStyle: "italic" }}>
                 Preview will render here as you type...

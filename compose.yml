@@ -2,7 +2,7 @@ services:
   postgres:
     image: postgres:latest
     ports:
-      - "5432:5432"
+      - "5433:5432"
     environment:
       - POSTGRES_PASSWORD="${DB_PASSWORD:-password}"
     volumes:
@@ -10,7 +10,7 @@ services:
   redis:
     image: redis:latest
     ports:
-      - "6379:6379"
+      - "6380:6379"
     volumes:
       - redis_data:/data
 volumes:

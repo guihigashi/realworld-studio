@@ -17,7 +17,7 @@ export default defineConfig({
     babel({ presets: [reactCompilerPreset()] }),
   ],
   server: {
-    port: 5173,
+    port: 5174,
     proxy: {
       "/api": {
         target: "http://127.0.0.1:8080",
