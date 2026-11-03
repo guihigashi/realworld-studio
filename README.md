@@ -24,8 +24,6 @@ Built with **Scala 3**, **ZIO 2**, and **React 19**, the studio manages expert u
 - [Architecture & System Flow](#-architecture--system-flow)
 - [Article Lifecycle State Machine](#-article-lifecycle-state-machine)
 - [Core Engineering Highlights](#-core-engineering-highlights)
-- [Tech Stack](#-tech-stack)
-- [Repository Structure](#-repository-structure)
 - [Getting Started](#-getting-started)
   - [Prerequisites](#prerequisites)
   - [1. Launch Infrastructure Services](#1-launch-infrastructure-services)
@@ -35,14 +33,14 @@ Built with **Scala 3**, **ZIO 2**, and **React 19**, the studio manages expert u
   - [5. Run Frontend Development Server](#5-run-frontend-development-server)
 - [Interactive UI Capabilities](#-interactive-ui-capabilities)
 - [REST API & Swagger Documentation](#-rest-api--swagger-documentation)
-- [Configuration Reference](#-configuration-reference)
 - [Testing](#-testing)
+- [License](#-license)
 
 ---
 
 ## ✨ Key Features
 
-* **Deterministic Structured AI Generation:** Eliminates hallucinated payloads and formatting errors. Generates domain-compliant personas and articles using local LLMs (`llama.cpp` / `llama-server`) with JSON Schema & GBNF logit clamping derived directly from native `zio-schema` Case Classes.
+* **Deterministic Structured AI Generation:** Eliminates hallucinated payloads and formatting errors. Generates domain-compliant personas using local LLMs (`llama.cpp` / `llama-server`) with JSON Schema & GBNF logit clamping derived directly from native `zio-schema` Case Classes, and synthesizes publication-ready articles via frontmatter-structured Markdown with target word count pacing (up to 2,000 words).
 * **100% Non-Blocking Reactive Database Tier:** Built on **Skunk** (`skunk-core`) over pure asynchronous sockets (bypassing blocking JDBC thread pools). Uses PostgreSQL triggers and `LISTEN / NOTIFY` channels to dispatch events with **0% idle polling overhead**.
 * **Atomic Job Claiming:** Workers safely compete for jobs using `FOR UPDATE SKIP LOCKED` inside transactional boundaries, guaranteeing zero duplicate processing or deadlocks across concurrent fibers.
 * **Real-Time UI Reactive Sync (SSE):** Database events fan out into a centralized `ZIO.Hub` and stream directly to client browsers over Server-Sent Events (`/api/events`), updating the UI instantaneously without client-side polling.
@@ -66,7 +64,7 @@ flowchart TD
 
     subgraph Backend ["ZIO 2 Backend Engine (server/)"]
         subgraph HTTPServer ["ZIO HTTP Web Server (:8080)"]
-            Endpoints["Declarative Endpoint API\n(/api/personas, /api/articles, /api/tags)"]
+            Endpoints["Declarative Endpoint API\n(/api/users, /api/articles, /api/tags)"]
             SwaggerRoutes["SwaggerUI & OpenAPI Spec\n(/docs/openapi)"]
             SSEEndpoint["SSE Stream\n(/api/events)"]
         end
@@ -76,7 +74,7 @@ flowchart TD
 
         subgraph Workers ["Lightweight ZIO Fiber Workers"]
             GenWorker["Generation Worker\n(Semaphore Controlled)"]
-            LLMClient["OpenAI / llama.cpp Client\n(GBNF & JSON Schema Clamping)"]
+            LLMClient["OpenAI / llama.cpp Client\n(JSON Schema Clamping & Paced Frontmatter)"]
             PubWorker["Publishing Worker"]
             ConduitClient["Conduit HTTP Client"]
             TokenCache["Redis JWT Token Cache"]
@@ -114,7 +112,7 @@ flowchart TD
 
     %% Generation Pipeline
     GenWorker -->|"Claim via FOR UPDATE SKIP LOCKED"| DB
-    GenWorker -->|"Structured Prompt"| LLMClient
+    GenWorker -->|"Prompt with Target Word Count"| LLMClient
     LLMClient <-->|"POST /v1/chat/completions"| LLM
     GenWorker -->|"Store Draft (PendingApproval)"| DB
 
@@ -142,28 +140,28 @@ flowchart TD
     
     PendingApproval -->|"Reviewer Approved"| Approved["Approved"]
     PendingApproval -->|"Regenerate (Reviewer Feedback)"| QueuedGeneration
-    PendingApproval -->|"Reviewer Rejected / Deleted"| Rejected["Rejected"]
+    PendingApproval -->|"Reviewer Deleted"| Deleted(["● Deleted / Purged"])
     
     Approved -->|"Claimed by Publisher"| Publishing["Publishing"]
     
     Publishing -->|"Conduit API 201 Created"| Published["Published"]
     Publishing -->|"Conduit API Error"| Failed
     
-    Published -->|"Republish / Edit Sync"| Publishing
+    Published -->|"Republish / Edit Sync"| Approved
     Failed -->|"Retry / Regenerate"| QueuedGeneration
+    Failed -->|"Manual Review & Approve"| Approved
     
-    Rejected --> End(["● Terminal"])
-    Published --> End
+    Published --> End(["● Live on Conduit"])
 ```
 
 ---
 
 ## 💡 Core Engineering Highlights
 
-### 1. Token-Level Schema Clamping (GBNF / JSON Schema)
-Instead of relying on prompt engineering or fragile regex parsing, generations are clamped at the token generation loop. Native Scala 3 domain models derived with `zio-schema` are mapped to OpenAPI `JsonSchema` definitions and passed directly to `llama.cpp` or OpenAI-compatible structured output formats (`response_format: { type: "json_schema" }`). This mathematically guarantees that the LLM emits valid JSON conforming to:
-* Persona profiles (username, email, bio, tone, tag lists).
-* Article drafts (title, concise description, rich GitHub-Flavored Markdown body, tags).
+### 1. Hybrid LLM Synthesis: Schema Clamping & Frontmatter Pacing
+Generating structured domain content requires distinct engineering strategies for short profiles vs. long-form articles:
+* **Persona Profiles (Logit Clamping):** Native Scala 3 case classes derived with `zio-schema` are mapped to OpenAPI `JsonSchema` definitions and passed directly to the inference engine (`response_format: { type: "json_schema" }`). This mathematically guarantees valid JSON with zero parsing failures.
+* **Long-Form Articles (Frontmatter & Word Count Pacing):** To prevent premature token truncation and JSON escaping issues when nesting rich code blocks inside JSON strings, article generation uses structured YAML frontmatter. Strict pacing guides, dynamic `maxTokens` scaling, target word count ranges (up to 2,000 words), and automated trailing meta-commentary stripping ensure production-ready GitHub-Flavored Markdown.
 
 ### 2. Zero-Polling Event Pipeline (`LISTEN / NOTIFY` + Skunk)
 Traditional polling loops saturate database CPU and connection pools. This system uses PostgreSQL triggers on the `articles` table to emit `pg_notify('article_events', payload)` on every status update. A dedicated Skunk socket session subscribes via `session.channel(id"article_events").listen(...)`.
@@ -176,72 +174,6 @@ Local LLM inference requires heavy GPU VRAM and context allocation. The backend 
 
 ### 4. Resilient JWT Authentication & Redis Caching
 Publishing to RealWorld Conduit requires persona authentication. The `ConduitTokenCache` inspects JWT expiration (`exp` claim via `jwt-scala`) and caches active bearer tokens in **Redis** with proactive expiration buffers, avoiding redundant login requests on every publication.
-
----
-
-## 🛠️ Tech Stack
-
-### Backend
-| Technology | Description |
-| :--- | :--- |
-| **Scala 3.10.0** | Modern functional programming with concise syntax, enums, and native derives |
-| **ZIO 2.1.27** | Asynchronous effect runtime, lightweight fibers, queues, hubs, and structural concurrency |
-| **ZIO HTTP 3.11.6** | Declarative endpoint API, OpenAPI 3.0 generation, and Server-Sent Events (SSE) streaming |
-| **Skunk 2.0.0-RC3** | Pure functional, non-blocking PostgreSQL client communicating directly over sockets via `fs2` |
-| **zio-interop-cats 23.1.0.14** | High-performance bridge between Cats Effect (`Resource`, `Session`) and ZIO |
-| **ZIO Redis 1.3.0** | Fully non-blocking Redis client for JWT token caching |
-| **ZIO Schema & ZIO JSON** | Type-safe AST reflection, serialization, and dynamic JSON Schema derivation |
-| **Flyway** | Versioned database schema migrations |
-
-### Frontend
-| Technology | Description |
-| :--- | :--- |
-| **React 19.3.1** | Latest React architecture with React Compiler optimizations |
-| **TypeScript 5.8+** | Strict end-to-end typing for state, API models, and components |
-| **Vite 8.3.5** | High-speed frontend bundling and HMR dev server |
-| **Material UI (MUI v9)** | Clean, responsive design system and data visualization components |
-| **Redux Toolkit & RTK Query** | Centralized client state management and declarative API caching with optimistic updates |
-| **React Hook Form & Zod** | Controlled form state management with strict schema validation |
-| **TanStack Router** | Type-safe declarative client-side routing |
-| **Rehype / Remark / Highlight.js** | Split-pane markdown rendering with syntax-highlighted code blocks |
-
----
-
-## 📁 Repository Structure
-
-```
-realworld-ai-seeder/
-├── compose.yml              # Local PostgreSQL (5433) and Redis (6380) services
-├── flyway.toml              # Flyway database migration configuration
-├── LICENSE                  # Apache 2.0 open-source license
-├── README.md                # Project architecture, documentation, and quickstart
-├── server/                  # Scala 3 / ZIO 2 Backend Application
-│   ├── build.sbt            # SBT project definition and dependencies
-│   └── src/
-│       ├── main/
-│       │   ├── resources/
-│       │   │   ├── application.conf          # App, database, LLM, and Conduit configs
-│       │   │   └── db/migration/             # SQL schema migrations (V1, V2)
-│       │   └── scala/com/github/guihigashi/conduit/studio/
-│       │       ├── domain/                   # Pure business models (User, Article, Tag, Tone)
-│       │       ├── application/              # Services and commands (User, Article, Tag)
-│       │       ├── infrastructure/
-│       │       │   ├── ai/                   # LlmClient, OpenAPI protocol, schema generation
-│       │       │   ├── db/                   # Skunk repositories and LISTEN/NOTIFY dispatcher
-│       │       │   ├── conduit/              # RealWorld API client and Redis token cache
-│       │       │   └── worker/               # Background generation & publishing fibers
-│       │       ├── presentation/http/        # Declarative ZIO HTTP routes and OpenAPI docs
-│       │       └── Main.scala                # Dependency injection and server bootstrap
-│       └── test/                             # Comprehensive ZIO Test suites
-└── web/                     # React 19 / TypeScript Frontend Application
-    ├── package.json         # Yarn dependencies and scripts
-    ├── vite.config.ts       # Vite configuration with /api and /docs reverse proxies
-    └── src/
-        ├── components/      # UI components (Split Markdown Editor, Persona Dialogs)
-        ├── routes/          # TanStack file-based routes (Studio, Approval, Audit, Personas)
-        ├── state/           # Redux Toolkit store and RTK Query API slice
-        └── hooks/           # Server-Sent Events (SSE) hooks and context
-```
 
 ---
 
@@ -298,7 +230,8 @@ The studio targets an OpenAI-compatible completion endpoint (default: `http://12
   --n-gpu-layers 99
 ```
 
-> **Note:** If your inference server runs on another port or host, update `openai.baseUrl` in `server/src/main/resources/application.conf`.
+> [!NOTE]
+> If your inference server runs on another port or host, update `openai.baseUrl` in `server/src/main/resources/application.conf`.
 
 ---
 
@@ -336,9 +269,9 @@ Open your browser at **`http://localhost:5174`**. Vite automatically proxies `/a
 
 | View | Route | Description |
 | :--- | :--- | :--- |
-| **Persona Hub** | `/` | Manage fake personas, configure writing tones (Academic, Technical Deep Dive, Conversational, etc.), set domain tags, or use **"Generate Persona with AI"** for instant synthetic user profiles. |
-| **Generation Studio** | `/studio` | Select an author persona, pick relevant topic tags, enter guidance or topic keywords, and enqueue generation jobs to background fibers. |
-| **Approval Board** | `/approval` | Real-time queue of generated articles awaiting review. Includes a **split-pane live editor** with GitHub-Flavored Markdown preview, syntax highlighting, word counters, and instant actions: **Approve & Publish**, **Regenerate with Feedback**, or **Delete**. |
+| **Persona Hub** | `/` | Manage expert personas, configure writing tones (Academic, Technical Deep Dive, Conversational, etc.), set domain tags, or use **"Generate Persona with AI"** for instant synthetic user profiles. |
+| **Generation Studio** | `/studio` | Select an author persona, pick relevant topic tags, enter guidance or topic keywords, adjust target word count (up to 2,000 words), and enqueue generation jobs to background fibers. |
+| **Approval Board** | `/approval` | Real-time queue of generated articles awaiting review. Includes a **split-pane live editor** with GitHub-Flavored Markdown preview, syntax-highlighted code blocks, live word counters, and instant actions: **Approve & Publish**, **Regenerate with Feedback**, or **Delete**. |
 | **Publishing Audit** | `/audit` | Live monitor of all published articles with links directly to the deployed Conduit blog post, external slug tracking, and in-place editing with republish capabilities. |
 
 ---
@@ -360,12 +293,12 @@ Interactive OpenAPI 3.0 documentation is auto-generated by ZIO HTTP and availabl
 * `DELETE /api/users/:id` — Remove persona.
 
 #### Articles & Queue Management
-* `POST /api/articles` — Enqueue a new article generation job (`queued_generation`).
+* `POST /api/articles` — Enqueue a new article generation job (`QueuedGeneration`).
 * `GET /api/articles?status=&authorId=` — Query articles by status and author filter.
 * `GET /api/articles/:id` — Fetch article details.
 * `PUT /api/articles/:id` — Edit article title, description, or markdown body.
 * `DELETE /api/articles/:id` — Delete article draft.
-* `POST /api/articles/:id/approve` — Approve draft and enqueue for publishing (`approved`).
+* `POST /api/articles/:id/approve` — Approve draft and enqueue for publishing (`Approved`).
 * `POST /api/articles/:id/regenerate` — Request LLM re-generation with custom reviewer instructions.
 * `POST /api/articles/:id/republish` — Re-sync modified published article to Conduit API.
 
@@ -374,49 +307,10 @@ Interactive OpenAPI 3.0 documentation is auto-generated by ZIO HTTP and availabl
 
 ---
 
-## ⚙️ Configuration Reference
-
-Configuration is managed via Typesafe Config in [`server/src/main/resources/application.conf`](server/src/main/resources/application.conf):
-
-```hocon
-app {
-  # "dev" enables debug logging and schema metadata inspection
-  mode = "dev"
-}
-
-db {
-  host = "127.0.0.1"
-  port = 5433
-  database = "postgres"
-  user = "postgres"
-  password = "password"
-  maxPoolSize = 5
-}
-
-openai {
-  baseUrl = "http://127.0.0.1:9931/v1"
-  timeoutSeconds = 60
-}
-
-conduit {
-  baseUrl = "https://rwa-api.guihigashi.dev/api"
-  frontendUrl = "https://rwa.guihigashi.dev"
-  timeoutSeconds = 10
-  fallbackToSimulated = false
-}
-
-redis {
-  host = "127.0.0.1"
-  port = 6380
-}
-```
-
----
-
 ## 🧪 Testing
 
 ### Backend Unit & Integration Tests
-The backend features integration test suites testing non-blocking Skunk repositories, workers, LLM client schema clamping, and SSE streams using **ZIO Test**:
+The backend features test suites covering non-blocking Skunk repositories, workers, LLM client generation, and SSE streams using **ZIO Test**:
 
 ```bash
 cd server
