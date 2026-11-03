@@ -90,11 +90,11 @@ A phased, commit-by-commit roadmap structured into modular vertical slices:
 
 ## 🚀 Track 3: Production Packaging & Portfolio Polish
 
-### Milestone 6: Single-Binary Assembly & Showcase `[NEXT UP]`
+### Milestone 6: Single-Binary Assembly & Showcase
 * **Commit 16: `feat(build): configure embedded spa static serving and sbt assembly`**
   - [ ] Vite production build output copied into `server/src/main/resources/dist`.
   - [ ] ZIO HTTP static resource routing serving embedded SPA on `GET /`.
   - [ ] Standalone fat-JAR packaging: single executable `java -jar server.jar` serving API + UI.
-* **Commit 17: `docs: create comprehensive portfolio readme with architecture diagrams and quickstart`**
-  - [ ] Architecture diagrams (Mermaid flowcharts of event-driven queue and LLM logit clamping).
-  - [ ] Quickstart demo script and performance telemetry highlights.
+* **Commit 17: `docs: create comprehensive portfolio readme with architecture diagrams and quickstart` `[COMPLETED]`**
+  - [x] Architecture diagrams (Mermaid flowcharts of event-driven queue and LLM logit clamping).
+  - [x] Quickstart demo script and performance telemetry highlights.
