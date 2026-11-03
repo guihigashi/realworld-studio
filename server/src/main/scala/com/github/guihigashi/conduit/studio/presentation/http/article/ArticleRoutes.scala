@@ -55,6 +55,9 @@ final case class ArticleRoutes(
       ArticleEndpoints.updateArticle.implement { (id, cmd) =>
         articleService.updateArticle(id, cmd)
       },
+      ArticleEndpoints.deleteArticle.implement { id =>
+        articleService.deleteArticle(id)
+      },
       ArticleEndpoints.approveArticle.implement { (id, cmd) =>
         articleService.approveArticle(id, cmd)
       },

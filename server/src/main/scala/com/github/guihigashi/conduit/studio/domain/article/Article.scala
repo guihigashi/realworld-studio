@@ -48,7 +48,7 @@ final case class Article(
       tags: Option[Set[String]] = None,
       now: Instant = Instant.now()
   ): Either[String, Article] =
-    if status == ArticleStatus.PendingApproval || status == ArticleStatus.Generating then
+    if status == ArticleStatus.PendingApproval || status == ArticleStatus.Generating || status == ArticleStatus.Approved then
       Right(
         copy(
           title = title.orElse(this.title),
@@ -58,8 +58,18 @@ final case class Article(
           updatedAt = now
         )
       )
+    else if status == ArticleStatus.Published || status == ArticleStatus.Failed then
+      transition(ArticleStatus.Approved, now).map { a =>
+        a.copy(
+          title = title.orElse(this.title),
+          description = description.orElse(this.description),
+          body = body.orElse(this.body),
+          tagList = tags.getOrElse(this.tagList),
+          errorMessage = None
+        )
+      }
     else
-      Left(s"Cannot edit article in status $status. Only drafts in PendingApproval can be edited.")
+      Left(s"Cannot edit article in status $status. Only drafts in PendingApproval, Approved, Published, or Failed can be edited.")
 
   def approve(
       title: Option[String] = None,

@@ -80,6 +80,55 @@ object ArticleSpec extends ZIOSpecDefault:
           )
         case Left(err) => assertTrue(err == "")
     },
+    test("Article supports updateDraft in Published status transitioning back to Approved") {
+      val authorId = UUID.randomUUID()
+      val initial  = Article.create(authorId, "Published Edit Topic", Set("tag"))
+      val flow = for
+        generating <- initial.startGeneration()
+        drafted    <- generating.completeGeneration("Published Title", "Desc", "Body", Set("tag"))
+        approved   <- drafted.approve()
+        publishing <- approved.startPublishing()
+        published  <- publishing.markPublished("http://localhost:3000/article/published-slug")
+        updated    <- published.updateDraft(
+          title = Some("Updated Published Title"),
+          body = Some("Updated Body Content")
+        )
+      yield (published, updated)
+
+      flow match
+        case Right((published, updated)) =>
+          assertTrue(
+            published.status == ArticleStatus.Published,
+            updated.status == ArticleStatus.Approved,
+            updated.title.contains("Updated Published Title"),
+            updated.body.contains("Updated Body Content"),
+            updated.description.contains("Desc"),
+            updated.conduitUrl.contains("http://localhost:3000/article/published-slug")
+          )
+        case Left(err) => assertTrue(err == "")
+    },
+    test("Article supports updateDraft in Failed status transitioning back to Approved") {
+      val authorId = UUID.randomUUID()
+      val initial  = Article.create(authorId, "Failed Edit Topic", Set("tag"))
+      val flow = for
+        generating <- initial.startGeneration()
+        drafted    <- generating.completeGeneration("Failed Title", "Desc", "Body", Set("tag"))
+        approved   <- drafted.approve()
+        publishing <- approved.startPublishing()
+        failed     <- publishing.markFailed("Network error")
+        updated    <- failed.updateDraft(title = Some("Fixed Title"))
+      yield (failed, updated)
+
+      flow match
+        case Right((failed, updated)) =>
+          assertTrue(
+            failed.status == ArticleStatus.Failed,
+            updated.status == ArticleStatus.Approved,
+            updated.title.contains("Fixed Title"),
+            updated.errorMessage.isEmpty
+          )
+        case Left(err) => assertTrue(err == "")
+    },
     test("Article transitions to Failed and supports regeneration") {
       val authorId = UUID.randomUUID()
       val initial  = Article.create(authorId, "Fault Tolerance", Set("zio"))

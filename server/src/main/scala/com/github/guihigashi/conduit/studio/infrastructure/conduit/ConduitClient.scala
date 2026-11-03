@@ -17,11 +17,12 @@ trait ConduitClient:
   def loginUser(user: User): Task[ConduitUser] =
     loginUser(user.email, user.password)
 
-  /** POST /api/articles - Publish an article under the author's account */
+  /** Publish an article under the author's account (create via POST or update via PUT if existingSlug is provided) */
   def publishArticle(
       author: User,
       title: String,
       description: String,
       body: String,
-      tagList: Set[String]
+      tagList: Set[String],
+      existingSlug: Option[String] = None
   ): Task[ConduitPublishedArticle]

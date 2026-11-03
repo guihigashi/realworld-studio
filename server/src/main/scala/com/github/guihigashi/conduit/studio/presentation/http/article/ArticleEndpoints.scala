@@ -32,6 +32,11 @@ object ArticleEndpoints:
       .out[Article]
       .outError[String](Status.BadRequest)
 
+  val deleteArticle =
+    Endpoint(Method.DELETE / "api" / "articles" / uuid("id"))
+      .out[Unit]
+      .outError[String](Status.NotFound)
+
   val approveArticle =
     Endpoint(Method.POST / "api" / "articles" / uuid("id") / "approve")
       .in[ApproveArticleCommand]
@@ -49,4 +54,4 @@ object ArticleEndpoints:
       .out[Article]
       .outError[String](Status.BadRequest)
 
-  val all = List(enqueueArticle, listArticles, getArticle, updateArticle, approveArticle, republishArticle, regenerateArticle)
+  val all = List(enqueueArticle, listArticles, getArticle, updateArticle, deleteArticle, approveArticle, republishArticle, regenerateArticle)

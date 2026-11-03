@@ -114,6 +114,13 @@ export const api = createApi({
       }),
       invalidatesTags: (_result, _error, { id }) => [{ type: "Article", id }, "Article"],
     }),
+    deleteArticle: build.mutation<void, string>({
+      query: (id) => ({
+        url: `/articles/${encodeURIComponent(id)}`,
+        method: "DELETE",
+      }),
+      invalidatesTags: (_result, _error, id) => [{ type: "Article", id }, "Article"],
+    }),
     approveArticle: build.mutation<Article, ApproveArticleArgs>({
       query: ({ id, cmd }) => ({
         url: `/articles/${encodeURIComponent(id)}/approve`,

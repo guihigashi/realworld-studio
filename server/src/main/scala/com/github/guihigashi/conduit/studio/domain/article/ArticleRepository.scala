@@ -10,3 +10,4 @@ trait ArticleRepository:
   def findAll(status: Option[ArticleStatus] = None, authorId: Option[UUID] = None): Task[List[Article]]
   def claimNextForGeneration: Task[Option[Article]]
   def claimNextForPublishing: Task[Option[Article]]
+  def delete(id: UUID): Task[Unit]

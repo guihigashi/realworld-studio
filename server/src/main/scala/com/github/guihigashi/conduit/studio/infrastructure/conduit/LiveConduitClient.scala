@@ -174,9 +174,10 @@ final case class LiveConduitClient(
       title: String,
       description: String,
       body: String,
-      tagList: Set[String]
+      tagList: Set[String],
+      existingSlug: Option[String] = None
   ): Task[ConduitPublishedArticle] =
-    def sendArticleRequest(token: String): Task[ConduitPublishedArticle] =
+    def sendCreateArticleRequest(token: String): Task[ConduitPublishedArticle] =
       for
         url <- ZIO.fromEither(URL.decode(s"${config.baseUrl}/articles"))
         payload = Json.Obj(
@@ -207,6 +208,46 @@ final case class LiveConduitClient(
         publishedUrl  = s"${config.frontendUrl.stripSuffix("/")}/article/$publishedSlug"
       yield ConduitPublishedArticle(publishedSlug, publishedUrl)
 
+    def sendUpdateArticleRequest(token: String, slug: String): Task[ConduitPublishedArticle] =
+      for
+        url <- ZIO.fromEither(URL.decode(s"${config.baseUrl}/articles/$slug"))
+        payload = Json.Obj(
+          "article" -> Json.Obj(
+            "title"       -> Json.Str(title),
+            "description" -> Json.Str(description),
+            "body"        -> Json.Str(body)
+          )
+        )
+        req = Request
+          .put(url, Body.fromString(payload.toJson))
+          .addHeader(Header.ContentType(MediaType.application.json))
+          .addHeader(Header.Custom("Authorization", s"Token $token"))
+        res <- client
+          .batched(req)
+          .timeoutFail(new RuntimeException(s"Updating article in Conduit timed out after ${config.timeoutSeconds}s"))(
+            config.timeoutSeconds.seconds
+          )
+        resBody <- res.body.asString
+        result  <- if res.status.isSuccess then
+          for
+            decoded <- ZIO
+              .fromEither(resBody.fromJson[CreateArticleResponse])
+              .mapError(err => new RuntimeException(s"Failed to decode Conduit article response: $err\nBody: $resBody"))
+            publishedSlug = decoded.article.slug
+            publishedUrl  = s"${config.frontendUrl.stripSuffix("/")}/article/$publishedSlug"
+          yield ConduitPublishedArticle(publishedSlug, publishedUrl)
+        else if res.status == Status.NotFound then
+          // Fall back to creating article if slug not found on Conduit
+          sendCreateArticleRequest(token)
+        else
+          ZIO.fail(ConduitApiException(res.status, resBody))
+      yield result
+
+    def sendArticleRequest(token: String): Task[ConduitPublishedArticle] =
+      existingSlug match
+        case Some(slug) if slug.trim.nonEmpty => sendUpdateArticleRequest(token, slug.trim)
+        case _                                => sendCreateArticleRequest(token)
+
     val publish =
       for
         token <- getValidToken(author)
@@ -223,11 +264,12 @@ final case class LiveConduitClient(
 
     if fallbackToSimulated then
       publish.catchAll { err =>
-        val simulatedSlug =
+        val simulatedSlug = existingSlug.filter(_.trim.nonEmpty).getOrElse {
           title.toLowerCase.replaceAll("[^a-z0-9]+", "-").stripPrefix("-").stripSuffix("-") + s"-${UUID.randomUUID().toString.take(6)}"
+        }
         val simulatedUrl = s"${config.frontendUrl.stripSuffix("/")}/article/$simulatedSlug"
         ZIO.logWarning(
-          s"Conduit publishing failed (${err.getMessage}), falling back to simulated published URL: $simulatedUrl"
+          s"Conduit publishing/updating failed (${err.getMessage}), falling back to simulated published URL: $simulatedUrl"
         ) *> ZIO.succeed(ConduitPublishedArticle(simulatedSlug, simulatedUrl))
       }
     else publish

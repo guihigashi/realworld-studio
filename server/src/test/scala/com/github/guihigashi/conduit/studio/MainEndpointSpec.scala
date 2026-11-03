@@ -210,6 +210,23 @@ object MainEndpointSpec extends ZIOSpecDefault:
         body.contains("ZIO HTTP & Skunk")
       )
     },
+    test("DELETE /api/articles/:id deletes specific article from Postgres") {
+      for {
+        userRepo     <- ZIO.service[UserRepository]
+        articleRepo  <- ZIO.service[ArticleRepository]
+        uname        = s"author_${UUID.randomUUID().toString.take(8)}"
+        author       = User.create(uname, s"$uname@conduit.studio", "pass", "Delete Article Engineer", None, Set.empty)
+        savedUser    <- userRepo.save(author)
+        article      = Article.create(savedUser.id, "Article To Delete", Set("scala"))
+        savedArticle <- articleRepo.save(article)
+        delReq       = Request.delete(URL.root / "api" / "articles" / savedArticle.id.toString)
+        delRes       <- runRoute(delReq)
+        foundArticle <- articleRepo.findById(savedArticle.id)
+      } yield assertTrue(
+        delRes.status == Status.Ok,
+        foundArticle.isEmpty
+      )
+    },
     test("PUT /api/articles/:id updates draft content") {
       for {
         userRepo     <- ZIO.service[UserRepository]
@@ -252,6 +269,46 @@ object MainEndpointSpec extends ZIOSpecDefault:
         updateBody.contains("Refined Title by Human Editor"),
         updateBody.contains("# Refined Body Content"),
         updateBody.contains("PendingApproval")
+      )
+    },
+    test("PUT /api/articles/:id updates published article and transitions back to Approved") {
+      for {
+        userRepo     <- ZIO.service[UserRepository]
+        articleRepo  <- ZIO.service[ArticleRepository]
+        uniqueUser   = s"author_${UUID.randomUUID().toString.take(8)}"
+        author       <- userRepo.save(
+          User.create(
+            username = uniqueUser,
+            email = s"$uniqueUser@conduit.studio",
+            password = "password",
+            bio = "Published editor",
+            avatarUrl = None,
+            tags = Set.empty
+          )
+        )
+        art = Article.create(author.id, "Published Article Edit", Set("scala"))
+        gen = art.startGeneration().toOption.get
+        draft = gen.completeGeneration("Old Title", "Old Desc", "Old Body", Set("scala")).toOption.get
+        approved = draft.approve().toOption.get
+        publishing = approved.startPublishing().toOption.get
+        published = publishing.markPublished("http://127.0.0.1:3000/article/old-title-123").toOption.get
+        saved <- articleRepo.save(published)
+
+        updatePayload =
+          """{
+            |  "title": "Edited Published Title",
+            |  "body": "Edited Published Body Content"
+            |}""".stripMargin
+        updateReq = Request
+          .put(URL.root / "api" / "articles" / saved.id.toString, Body.fromString(updatePayload))
+          .addHeader(Header.ContentType(MediaType.application.json))
+        updateRes <- runRoute(updateReq)
+        updateBody <- updateRes.body.asString
+      } yield assertTrue(
+        updateRes.status == Status.Ok,
+        updateBody.contains("Edited Published Title"),
+        updateBody.contains("Edited Published Body Content"),
+        updateBody.contains("Approved")
       )
     },
     test("POST /api/articles/:id/approve and /regenerate transition article state") {

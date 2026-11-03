@@ -54,6 +54,15 @@ final case class ArticleService(
       saved      <- articleRepo.update(updated)
     yield saved).mapError(_.getMessage)
 
+  def deleteArticle(id: UUID): IO[String, Unit] =
+    (for
+      articleOpt <- articleRepo.findById(id)
+      _          <- ZIO.when(articleOpt.isEmpty) {
+        ZIO.fail(new RuntimeException(s"Article with id '$id' not found"))
+      }
+      _          <- articleRepo.delete(id)
+    yield ()).mapError(_.getMessage)
+
   def approveArticle(id: UUID, command: ApproveArticleCommand): IO[String, Article] =
     (for
       articleOpt <- articleRepo.findById(id)

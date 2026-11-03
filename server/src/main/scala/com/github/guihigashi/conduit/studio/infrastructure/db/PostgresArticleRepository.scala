@@ -130,6 +130,20 @@ final case class PostgresArticleRepository(pool: SkunkPool) extends ArticleRepos
       yield article
     }
 
+  private val deleteArticleCmd: Command[UUID] =
+    sql"""
+      DELETE FROM articles
+      WHERE id = $uuid
+    """.command
+
+  override def delete(id: UUID): Task[Unit] =
+    pool.use { session =>
+      for
+        cmd <- session.prepare(deleteArticleCmd)
+        _   <- cmd.execute(id)
+      yield ()
+    }
+
   private val selectById: Query[UUID, ArticleRow] =
     sql"""
       SELECT id, author_id, topic, title, description, body, tag_list, status, writing_tone, target_word_count, conduit_url, error_message, created_at, updated_at

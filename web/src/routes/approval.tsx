@@ -188,6 +188,7 @@ function RouteComponent() {
               article={activeArticle}
               users={users}
               onRegenerate={() => setRegenOpen(true)}
+              onDelete={() => setSelectedArticleId(null)}
               setToastMessage={setToastMessage}
             />
           ) : null}

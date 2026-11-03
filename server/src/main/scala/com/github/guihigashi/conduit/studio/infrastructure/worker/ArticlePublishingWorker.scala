@@ -48,12 +48,16 @@ final case class ArticlePublishingWorker(
         title     <- ZIO.fromOption(article.title).orElseFail(new RuntimeException("Article title is missing"))
         desc      <- ZIO.fromOption(article.description).orElseFail(new RuntimeException("Article description is missing"))
         body      <- ZIO.fromOption(article.body).orElseFail(new RuntimeException("Article body is missing"))
+        existingSlug = article.conduitUrl.flatMap(url =>
+          url.trim.stripSuffix("/").split("/").lastOption.filter(_.nonEmpty)
+        )
         published <- conduitClient.publishArticle(
           author = author,
           title = title,
           description = desc,
           body = body,
-          tagList = article.tagList
+          tagList = article.tagList,
+          existingSlug = existingSlug
         )
         updated   <- ZIO.fromEither(
           article.markPublished(conduitUrl = published.url)
