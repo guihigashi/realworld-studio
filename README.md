@@ -92,39 +92,39 @@ flowchart TD
     end
 
     %% UI Interactions
-    PersonaUI -->|Create / Generate Personas| Endpoints
-    QueueUI -->|Enqueue Generation Request| Endpoints
-    ApprovalUI -->|Edit / Approve / Regenerate| Endpoints
-    AuditUI -->|Update & Republish Article| Endpoints
-    SwaggerView -.->|Inspect API Spec| SwaggerRoutes
+    PersonaUI -->|"Create / Generate Personas"| Endpoints
+    QueueUI -->|"Enqueue Generation Request"| Endpoints
+    ApprovalUI -->|"Edit / Approve / Regenerate"| Endpoints
+    AuditUI -->|"Update & Republish Article"| Endpoints
+    SwaggerView -.->|"Inspect API Spec"| SwaggerRoutes
 
     %% Persistence
-    Endpoints -->|Non-blocking SQL via Skunk| DB
+    Endpoints -->|"Non-blocking SQL via Skunk"| DB
 
     %% Event Dispatching
-    DB -.->|PostgreSQL NOTIFY article_events| EventListener
-    EventListener -->|Publish Status Changes| SSEHub
-    EventListener -->|Wakeup Trigger| GenWorker
-    EventListener -->|Wakeup Trigger| PubWorker
+    DB -.->|"PostgreSQL NOTIFY article_events"| EventListener
+    EventListener -->|"Publish Status Changes"| SSEHub
+    EventListener -->|"Wakeup Trigger"| GenWorker
+    EventListener -->|"Wakeup Trigger"| PubWorker
 
     %% Real-Time SSE
-    SSEHub -->|Push Events| SSEEndpoint
-    SSEEndpoint -.->|Server-Sent Events| ApprovalUI
-    SSEEndpoint -.->|Server-Sent Events| AuditUI
+    SSEHub -->|"Push Events"| SSEEndpoint
+    SSEEndpoint -.->|"Server-Sent Events"| ApprovalUI
+    SSEEndpoint -.->|"Server-Sent Events"| AuditUI
 
     %% Generation Pipeline
-    GenWorker -->|Claim via FOR UPDATE SKIP LOCKED| DB
-    GenWorker -->|Structured Prompt| LLMClient
-    LLMClient <-->|POST /v1/chat/completions| LLM
-    GenWorker -->|Store Draft (PendingApproval)| DB
+    GenWorker -->|"Claim via FOR UPDATE SKIP LOCKED"| DB
+    GenWorker -->|"Structured Prompt"| LLMClient
+    LLMClient <-->|"POST /v1/chat/completions"| LLM
+    GenWorker -->|"Store Draft (PendingApproval)"| DB
 
     %% Publishing Pipeline
-    PubWorker -->|Claim Approved Articles| DB
-    PubWorker -->|Fetch / Cache Bearer Token| TokenCache
-    TokenCache <-->|Get / Set JWT with TTL| RedisDB
-    PubWorker -->|POST /api/articles| ConduitClient
-    ConduitClient <-->|Conduit REST Protocol| ConduitAPI
-    PubWorker -->|Mark Published & Store Slug| DB
+    PubWorker -->|"Claim Approved Articles"| DB
+    PubWorker -->|"Fetch / Cache Bearer Token"| TokenCache
+    TokenCache <-->|"Get / Set JWT with TTL"| RedisDB
+    PubWorker -->|"POST /api/articles"| ConduitClient
+    ConduitClient <-->|"Conduit REST Protocol"| ConduitAPI
+    PubWorker -->|"Mark Published & Store Slug"| DB
 ```
 
 ---
@@ -132,27 +132,28 @@ flowchart TD
 ## 🔄 Article Lifecycle State Machine
 
 ```mermaid
-stateDiagram-v2
-    [*] --> QueuedGeneration: Enqueue Article (UI / API)
+flowchart TD
+    Start(["● Enqueue Request"]) --> QueuedGeneration["QueuedGeneration"]
     
-    QueuedGeneration --> Generating: Claimed by Generation Worker (SKIP LOCKED)
+    QueuedGeneration -->|"Worker Claim (SKIP LOCKED)"| Generating["Generating"]
     
-    Generating --> PendingApproval: LLM Generates Compliant Markdown
-    Generating --> Failed: LLM Timeout / Inference Error
+    Generating -->|"LLM Synthesis Success"| PendingApproval["PendingApproval"]
+    Generating -->|"Inference Failure / Timeout"| Failed["Failed"]
     
-    PendingApproval --> Approved: Approved by Reviewer (with edits)
-    PendingApproval --> QueuedGeneration: Regenerate (with custom prompt)
-    PendingApproval --> Rejected: Rejected / Deleted by Reviewer
+    PendingApproval -->|"Reviewer Approved"| Approved["Approved"]
+    PendingApproval -->|"Regenerate (Reviewer Feedback)"| QueuedGeneration
+    PendingApproval -->|"Reviewer Rejected / Deleted"| Rejected["Rejected"]
     
-    Approved --> Publishing: Claimed by Publishing Worker
+    Approved -->|"Claimed by Publisher"| Publishing["Publishing"]
     
-    Publishing --> Published: Conduit API 201 Created (Slug Assigned)
-    Publishing --> Failed: Conduit API Error (Retries Available)
-
-    Published --> Publishing: Republish / Resync to Conduit
-    Failed --> QueuedGeneration: Regenerate / Retry
-    Rejected --> [*]
-    Published --> [*]
+    Publishing -->|"Conduit API 201 Created"| Published["Published"]
+    Publishing -->|"Conduit API Error"| Failed
+    
+    Published -->|"Republish / Edit Sync"| Publishing
+    Failed -->|"Retry / Regenerate"| QueuedGeneration
+    
+    Rejected --> End(["● Terminal"])
+    Published --> End
 ```
 
 ---
