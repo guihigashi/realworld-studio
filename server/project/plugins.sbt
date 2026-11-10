@@ -1,1 +1,1 @@
-addSbtPlugin("com.indoorvivants" % "sbt-revolver" % "0.11.2")
+addSbtPlugin("com.jamesward" % "sbt-reload" % "0.0.8")

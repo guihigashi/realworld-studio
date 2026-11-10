@@ -31,7 +31,7 @@ object Main extends ZIOAppDefault:
       _          <- pubWorker.run.forkScoped
       _          <- ZIO.serviceWithZIO[ApiRoutes](_.serve)
     yield ()).provide(
-      Server.default,
+      Server.configured(),
       ApiRoutes.layer,
       TagService.layer,
       UserService.layer,

@@ -1,0 +1,21 @@
+[tools]
+node = "lts"
+
+[tasks."dev:infra"]
+description = "Start Postgres and Redis containers"
+run = "podman compose up -d"
+
+[tasks."dev:server"]
+description = "Start Scala server with hot reload"
+dir = "server"
+run = "sbt ~runReload"
+
+[tasks."dev:web"]
+description = "Start React web-client Vite dev server"
+dir = "web"
+run = "yarn dev"
+
+[tasks."dev:up"]
+description = "Start infra and run all dev services in parallel"
+depends = ["dev:infra", "dev:server", "dev:web"]
+
